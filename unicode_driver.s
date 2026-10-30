@@ -1,0 +1,746 @@
+/* UNICODE_DRIVER.S - Universal Apple II Unicode Multilingual Font Bridge */
+
+    * = $4000
+
+KSW_LO          = $38
+KSW_HI          = $39
+DOS_KSW_LO      = $AA55
+DOS_KSW_HI      = $AA56
+AMP_VECTOR      = $03F5
+
+CHRGET          = $00B1
+TXTPTR_LO       = $B8
+TXTPTR_HI       = $B9
+
+KBD             = $C000
+KBDSTRB         = $C010
+TXTCLR          = $C050
+TXTSET          = $C051
+MIXCLR          = $C052
+MIXSET          = $C053
+PAGE1           = $C054
+HIRES           = $C057
+
+ACIA_DATA       = $C0A8
+ACIA_STAT       = $C0A9
+ACIA_CMD        = $C0AA
+ACIA_CTRL       = $C0AB
+
+PTR_LO          = $06
+PTR_HI          = $07
+COL_OFFSET      = $08
+START_Y         = $09
+SRC_LO          = $0A
+SRC_HI          = $0B
+CACHE_PTR_LO    = $0C
+CACHE_PTR_HI    = $0D
+SEARCH_CNT      = $0E
+TEMP_BYTE       = $0F
+KEY_0           = $19
+KEY_1           = $1A
+KEY_2           = $1B
+CUR_COL         = $1C
+CUR_ROW         = $1D
+
+INIT
+    LDA #$00
+    STA ACIA_STAT
+    LDA #$1E
+    STA ACIA_CTRL
+    LDA #$0B
+    STA ACIA_CMD
+
+    LDA #$00
+    STA BUF_HEAD
+    STA BUF_TAIL
+    STA CUR_COL
+    STA CUR_ROW
+
+    LDA #$4C
+    STA AMP_VECTOR
+    LDA #<AMPERSAND_HANDLER
+    STA AMP_VECTOR+1
+    LDA #>AMPERSAND_HANDLER
+    STA AMP_VECTOR+2
+
+    LDA #<MY_KEYIN
+    STA KSW_LO
+    STA DOS_KSW_LO
+    LDA #>MY_KEYIN
+    STA KSW_HI
+    STA DOS_KSW_HI
+
+    JSR CLEAR_HGR
+    RTS
+
+AMPERSAND_HANDLER
+    CMP #'"'
+    BEQ RUN_AMP_STRING
+
+    JSR CHRGET
+    CMP #'"'
+    BEQ RUN_AMP_STRING
+
+    JMP RUN_TERMINAL_MODE
+
+RUN_AMP_STRING
+    STA TXTCLR
+    STA HIRES
+    STA PAGE1
+    STA MIXSET
+
+    ; Check if Cache is valid at $6000 ('H','G')
+    LDA $6000
+    CMP #'H'
+    BNE NO_LOCAL_CACHE
+    LDA $6001
+    CMP #'G'
+    BEQ RUN_OFFLINE_STRING
+
+NO_LOCAL_CACHE
+    LDA #$87
+    JSR SEND_BYTE
+
+SEND_STR_LOOP
+    INC TXTPTR_LO
+    BNE FETCH_STR_CHAR
+    INC TXTPTR_HI
+FETCH_STR_CHAR
+    LDY #$00
+    LDA (TXTPTR_LO),Y
+    BEQ SEND_STR_END
+    CMP #'"'
+    BEQ SEND_STR_END
+    JSR SEND_BYTE
+    JMP SEND_STR_LOOP
+
+SEND_STR_END
+    PHA
+    LDA #$00
+    JSR SEND_BYTE
+
+    JSR PROCESS_PC_DRAWING
+
+    PLA
+    CMP #'"'
+    BNE AMP_RTS
+    JSR CHRGET
+
+AMP_RTS
+    RTS
+
+; --- Offline Cache Renderer ---
+
+GOTO_OFFLINE_DONE
+    JMP OFFLINE_DONE
+
+GOTO_HEX_MODE_END
+    JMP HEX_MODE_END
+
+RUN_OFFLINE_STRING
+    LDA CUR_ROW
+    ORA CUR_COL
+    BNE OFFLINE_LOOP
+    JSR CLEAR_HGR
+
+OFFLINE_LOOP
+    INC TXTPTR_LO
+    BNE FETCH_OFFLINE
+    INC TXTPTR_HI
+FETCH_OFFLINE
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    BEQ GOTO_OFFLINE_DONE
+    CMP #'"'
+    BEQ GOTO_OFFLINE_DONE
+    CMP #'\\'
+    BEQ HANDLE_ESCAPE
+
+    ; Normal ASCII character (Space or Latin)
+    CMP #$20
+    BNE SKIP_CHAR
+    LDA CUR_COL
+    CLC
+    ADC #2
+    STA CUR_COL
+    CMP #40
+    BCC OFFLINE_LOOP
+    LDA #0
+    STA CUR_COL
+    INC CUR_ROW
+    LDA CUR_ROW
+    CMP #12
+    BCC OFFLINE_LOOP
+    DEC CUR_ROW
+    JSR SCROLL_HGR
+SKIP_CHAR
+    JMP OFFLINE_LOOP
+
+HANDLE_ESCAPE
+    INC TXTPTR_LO
+    BNE ESC_ADV_1
+    INC TXTPTR_HI
+ESC_ADV_1
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    CMP #'K'
+    BEQ HEX_MODE_START
+    JMP OFFLINE_LOOP
+
+HEX_MODE_START
+HEX_CHAR_LOOP
+    INC TXTPTR_LO
+    BNE HEX_ADV_1
+    INC TXTPTR_HI
+HEX_ADV_1
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    BEQ GOTO_OFFLINE_DONE
+    CMP #'"'
+    BEQ GOTO_OFFLINE_DONE
+    CMP #'\\'
+    BEQ GOTO_HEX_MODE_END
+
+    ; Parse Byte 0
+    JSR CHAR_TO_NIBBLE
+    ASL
+    ASL
+    ASL
+    ASL
+    STA TEMP_BYTE
+    INC TXTPTR_LO
+    BNE HEX_ADV_2
+    INC TXTPTR_HI
+HEX_ADV_2
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    JSR CHAR_TO_NIBBLE
+    ORA TEMP_BYTE
+    STA KEY_0
+
+    ; Parse Byte 1
+    INC TXTPTR_LO
+    BNE HEX_ADV_3
+    INC TXTPTR_HI
+HEX_ADV_3
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    JSR CHAR_TO_NIBBLE
+    ASL
+    ASL
+    ASL
+    ASL
+    STA TEMP_BYTE
+    INC TXTPTR_LO
+    BNE HEX_ADV_4
+    INC TXTPTR_HI
+HEX_ADV_4
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    JSR CHAR_TO_NIBBLE
+    ORA TEMP_BYTE
+    STA KEY_1
+
+    ; Parse Byte 2
+    INC TXTPTR_LO
+    BNE HEX_ADV_5
+    INC TXTPTR_HI
+HEX_ADV_5
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    JSR CHAR_TO_NIBBLE
+    ASL
+    ASL
+    ASL
+    ASL
+    STA TEMP_BYTE
+    INC TXTPTR_LO
+    BNE HEX_ADV_6
+    INC TXTPTR_HI
+HEX_ADV_6
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    JSR CHAR_TO_NIBBLE
+    ORA TEMP_BYTE
+    STA KEY_2
+
+    ; Draw glyph from cache
+    JSR DRAW_CACHED_GLYPH
+
+    ; Advance cursor
+    LDA CUR_COL
+    CLC
+    ADC #2
+    STA CUR_COL
+    CMP #40
+    BCC ADV_COL_OK
+    LDA #0
+    STA CUR_COL
+    INC CUR_ROW
+    LDA CUR_ROW
+    CMP #12
+    BCC ADV_COL_OK
+    DEC CUR_ROW
+    JSR SCROLL_HGR
+ADV_COL_OK
+    JMP HEX_CHAR_LOOP
+
+HEX_MODE_END
+    INC TXTPTR_LO
+    BNE HEX_ADV_7
+    INC TXTPTR_HI
+HEX_ADV_7
+    JMP OFFLINE_LOOP
+
+OFFLINE_DONE
+    LDA #0
+    STA CUR_COL
+    INC CUR_ROW
+    LDA CUR_ROW
+    CMP #12
+    BCC DONE_ROW_OK
+    DEC CUR_ROW
+    JSR SCROLL_HGR
+DONE_ROW_OK
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    CMP #'"'
+    BNE OFFLINE_RTS
+    JSR CHRGET
+OFFLINE_RTS
+    RTS
+
+CHAR_TO_NIBBLE
+    CMP #'0'
+    BCC NIBBLE_ZERO
+    CMP #'9'+1
+    BCC NIBBLE_DEC
+    CMP #'A'
+    BCC NIBBLE_ZERO
+    CMP #'F'+1
+    BCS NIBBLE_ZERO
+    SEC
+    SBC #55
+    RTS
+NIBBLE_DEC
+    SEC
+    SBC #'0'
+    RTS
+NIBBLE_ZERO
+    LDA #0
+    RTS
+
+DRAW_CACHED_GLYPH
+    LDA $6002
+    BEQ DRAW_GLYPH_RET
+    STA SEARCH_CNT
+
+    LDA #<$6004
+    STA CACHE_PTR_LO
+    LDA #>$6004
+    STA CACHE_PTR_HI
+
+SEARCH_CACHE_LOOP
+    LDY #0
+    LDA (CACHE_PTR_LO),Y
+    CMP KEY_0
+    BNE NEXT_CACHE_SLOT
+    INY
+    LDA (CACHE_PTR_LO),Y
+    CMP KEY_1
+    BNE NEXT_CACHE_SLOT
+    INY
+    LDA (CACHE_PTR_LO),Y
+    CMP KEY_2
+    BEQ FOUND_CACHE_SLOT
+
+NEXT_CACHE_SLOT
+    LDA CACHE_PTR_LO
+    CLC
+    ADC #36
+    STA CACHE_PTR_LO
+    BCC CACHE_ADV_OK
+    INC CACHE_PTR_HI
+CACHE_ADV_OK
+    DEC SEARCH_CNT
+    BNE SEARCH_CACHE_LOOP
+    RTS
+
+FOUND_CACHE_SLOT
+    LDA CACHE_PTR_LO
+    CLC
+    ADC #4
+    STA SRC_LO
+    LDA CACHE_PTR_HI
+    ADC #0
+    STA SRC_HI
+
+    LDA CUR_ROW
+    ASL
+    ASL
+    ASL
+    ASL
+    STA START_Y
+
+    LDX #0
+RENDER_CACHE_ROWS
+    TXA
+    CLC
+    ADC START_Y
+    TAY
+    LDA HGR_LO,Y
+    CLC
+    ADC CUR_COL
+    STA PTR_LO
+    LDA HGR_HI,Y
+    ADC #0
+    STA PTR_HI
+
+    TXA
+    ASL
+    TAY
+    LDA (SRC_LO),Y
+    LDY #0
+    STA (PTR_LO),Y
+
+    TXA
+    ASL
+    TAY
+    INY
+    LDA (SRC_LO),Y
+    LDY #1
+    STA (PTR_LO),Y
+
+    INX
+    CPX #16
+    BNE RENDER_CACHE_ROWS
+
+DRAW_GLYPH_RET
+    RTS
+
+; --- PC Streaming & Driver Core ---
+
+PROCESS_PC_DRAWING
+    JSR RECV_BYTE
+    CMP #$00
+    BEQ DRAWING_DONE
+    CMP #$81
+    BEQ EXEC_DRAW
+    CMP #$82
+    BEQ EXEC_CLEAR
+    CMP #$84
+    BEQ EXEC_SCROLL
+    JMP PROCESS_PC_DRAWING
+
+EXEC_DRAW
+    JSR DRAW_ONE_GLYPH
+    JMP PROCESS_PC_DRAWING
+
+EXEC_CLEAR
+    JSR CLEAR_HGR
+    JMP PROCESS_PC_DRAWING
+
+EXEC_SCROLL
+    JSR SCROLL_HGR
+    JMP PROCESS_PC_DRAWING
+
+DRAWING_DONE
+    RTS
+
+MY_KEYIN
+    LDA BUF_HEAD
+    CMP BUF_TAIL
+    BEQ READ_KBD
+
+    STX SAVE_X
+    LDX BUF_TAIL
+    LDA BUF_START,X
+    INC BUF_TAIL
+    LDX SAVE_X
+    ORA #$80
+    RTS
+
+READ_KBD
+    LDA KBD
+    BPL READ_KBD
+    STA KBDSTRB
+    AND #$7F
+
+    CMP #$0B
+    BEQ HANDLE_CTRL_K
+
+    CMP #$1B
+    BNE NOT_ESC
+    STA TXTSET
+    LDA #0
+    STA CUR_COL
+    STA CUR_ROW
+    LDA #$8D
+    RTS
+
+NOT_ESC
+    CMP #'a'
+    BCC NOT_LOWER
+    CMP #'z'+1
+    BCS NOT_LOWER
+    SEC
+    SBC #$20
+NOT_LOWER
+    ORA #$80
+    RTS
+
+HANDLE_CTRL_K
+    STX SAVE_X
+    STY SAVE_Y
+    LDA #$0B
+    JSR SEND_BYTE
+
+WAIT_FOR_PC_INPUT
+    LDA ACIA_STAT
+    AND #$08
+    BNE READ_INPUT_CMD
+
+    LDA KBD
+    BPL WAIT_FOR_PC_INPUT
+    STA KBDSTRB
+    AND #$7F
+    CMP #$1B
+    BEQ CANCEL_PC_INPUT
+    JMP WAIT_FOR_PC_INPUT
+
+READ_INPUT_CMD
+    LDA ACIA_DATA
+    CMP #$86
+    BNE WAIT_FOR_PC_INPUT
+
+    JSR RECV_BYTE
+    STA SAVE_CNT
+    BEQ RESTORE_REG
+
+READ_PAYLOAD_LOOP
+    JSR RECV_BYTE
+    LDX BUF_HEAD
+    STA BUF_START,X
+    INC BUF_HEAD
+    DEC SAVE_CNT
+    BNE READ_PAYLOAD_LOOP
+
+RESTORE_REG
+    LDX SAVE_X
+    LDY SAVE_Y
+    JMP MY_KEYIN
+
+CANCEL_PC_INPUT
+    LDX SAVE_X
+    LDY SAVE_Y
+    JMP READ_KBD
+
+RUN_TERMINAL_MODE
+    STA TXTCLR
+    STA HIRES
+    STA PAGE1
+    STA MIXSET
+    LDA #$00
+    STA ACIA_STAT
+    LDA #$1E
+    STA ACIA_CTRL
+    LDA #$0B
+    STA ACIA_CMD
+
+TERM_LOOP
+    LDA KBD
+    BPL CHECK_RX
+    STA KBDSTRB
+    AND #$7F
+    CMP #$1B
+    BEQ EXIT_TERM
+    PHA
+WAIT_TX_TERM
+    LDA ACIA_STAT
+    AND #$10
+    BEQ WAIT_TX_TERM
+    PLA
+    STA ACIA_DATA
+
+CHECK_RX
+    LDA ACIA_STAT
+    AND #$08
+    BEQ TERM_LOOP
+
+    LDA ACIA_DATA
+    CMP #$81
+    BEQ TERM_DRAW
+    CMP #$82
+    BEQ TERM_CLEAR
+    CMP #$83
+    BEQ EXIT_TERM
+    CMP #$84
+    BEQ TERM_SCROLL
+    JMP TERM_LOOP
+
+TERM_DRAW
+    JSR DRAW_ONE_GLYPH
+    JMP TERM_LOOP
+
+TERM_CLEAR
+    JSR CLEAR_HGR
+    JMP TERM_LOOP
+
+TERM_SCROLL
+    JSR SCROLL_HGR
+    JMP TERM_LOOP
+
+EXIT_TERM
+    STA TXTSET
+    JSR CHRGET
+    RTS
+
+DRAW_ONE_GLYPH
+    JSR RECV_BYTE
+    STA COL_OFFSET
+    JSR RECV_BYTE
+    ASL
+    ASL
+    ASL
+    ASL
+    STA START_Y
+
+    LDX #$00
+GLYPH_ROW_LOOP
+    TXA
+    CLC
+    ADC START_Y
+    TAY
+    LDA HGR_LO,Y
+    CLC
+    ADC COL_OFFSET
+    STA PTR_LO
+    LDA HGR_HI,Y
+    ADC #$00
+    STA PTR_HI
+
+    JSR RECV_BYTE
+    LDY #$00
+    STA (PTR_LO),Y
+
+    JSR RECV_BYTE
+    INY
+    STA (PTR_LO),Y
+
+    INX
+    CPX #16
+    BNE GLYPH_ROW_LOOP
+    RTS
+
+CLEAR_HGR
+    LDA #$20
+    STA PTR_HI
+    LDA #$00
+    STA PTR_LO
+    TAY
+    LDA #$00
+CLR_LOOP
+    STA (PTR_LO),Y
+    INY
+    BNE CLR_LOOP
+    INC PTR_HI
+    LDX PTR_HI
+    CPX #$40
+    BNE CLR_LOOP
+    RTS
+
+SCROLL_HGR
+    LDX #$00
+SCROLL_LINE
+    TXA
+    CLC
+    ADC #16
+    TAY
+    LDA HGR_LO,Y
+    STA SRC_LO
+    LDA HGR_HI,Y
+    STA SRC_HI
+
+    LDA HGR_LO,X
+    STA PTR_LO
+    LDA HGR_HI,X
+    STA PTR_HI
+
+    LDY #39
+COPY_40
+    LDA (SRC_LO),Y
+    STA (PTR_LO),Y
+    DEY
+    BPL COPY_40
+
+    INX
+    CPX #176
+    BNE SCROLL_LINE
+
+    LDA #0
+CLEAR_BOTTOM
+    LDA HGR_LO,X
+    STA PTR_LO
+    LDA HGR_HI,X
+    STA PTR_HI
+    LDY #39
+CLR_40
+    STA (PTR_LO),Y
+    DEY
+    BPL CLR_40
+    INX
+    CPX #192
+    BNE CLEAR_BOTTOM
+    RTS
+
+SEND_BYTE
+    PHA
+WAIT_TX
+    LDA ACIA_STAT
+    AND #$10
+    BEQ WAIT_TX
+    PLA
+    STA ACIA_DATA
+    RTS
+
+RECV_BYTE
+    LDA ACIA_STAT
+    AND #$08
+    BEQ RECV_BYTE
+    LDA ACIA_DATA
+    RTS
+
+SAVE_X     .byte 0
+SAVE_Y     .byte 0
+SAVE_CNT   .byte 0
+BUF_HEAD   .byte 0
+BUF_TAIL   .byte 0
+BUF_START  .dsb 256, 0
+
+HGR_LO
+.byte $00, $00, $00, $00, $00, $00, $00, $00, $80, $80, $80, $80, $80, $80, $80, $80
+.byte $00, $00, $00, $00, $00, $00, $00, $00, $80, $80, $80, $80, $80, $80, $80, $80
+.byte $00, $00, $00, $00, $00, $00, $00, $00, $80, $80, $80, $80, $80, $80, $80, $80
+.byte $00, $00, $00, $00, $00, $00, $00, $00, $80, $80, $80, $80, $80, $80, $80, $80
+.byte $28, $28, $28, $28, $28, $28, $28, $28, $A8, $A8, $A8, $A8, $A8, $A8, $A8, $A8
+.byte $28, $28, $28, $28, $28, $28, $28, $28, $A8, $A8, $A8, $A8, $A8, $A8, $A8, $A8
+.byte $28, $28, $28, $28, $28, $28, $28, $28, $A8, $A8, $A8, $A8, $A8, $A8, $A8, $A8
+.byte $28, $28, $28, $28, $28, $28, $28, $28, $A8, $A8, $A8, $A8, $A8, $A8, $A8, $A8
+.byte $50, $50, $50, $50, $50, $50, $50, $50, $D0, $D0, $D0, $D0, $D0, $D0, $D0, $D0
+.byte $50, $50, $50, $50, $50, $50, $50, $50, $D0, $D0, $D0, $D0, $D0, $D0, $D0, $D0
+.byte $50, $50, $50, $50, $50, $50, $50, $50, $D0, $D0, $D0, $D0, $D0, $D0, $D0, $D0
+.byte $50, $50, $50, $50, $50, $50, $50, $50, $D0, $D0, $D0, $D0, $D0, $D0, $D0, $D0
+
+HGR_HI
+.byte $20, $24, $28, $2C, $30, $34, $38, $3C, $20, $24, $28, $2C, $30, $34, $38, $3C
+.byte $21, $25, $29, $2D, $31, $35, $39, $3D, $21, $25, $29, $2D, $31, $35, $39, $3D
+.byte $22, $26, $2A, $2E, $32, $36, $3A, $3E, $22, $26, $2A, $2E, $32, $36, $3A, $3E
+.byte $23, $27, $2B, $2F, $33, $37, $3B, $3F, $23, $27, $2B, $2F, $33, $37, $3B, $3F
+.byte $20, $24, $28, $2C, $30, $34, $38, $3C, $20, $24, $28, $2C, $30, $34, $38, $3C
+.byte $21, $25, $29, $2D, $31, $35, $39, $3D, $21, $25, $29, $2D, $31, $35, $39, $3D
+.byte $22, $26, $2A, $2E, $32, $36, $3A, $3E, $22, $26, $2A, $2E, $32, $36, $3A, $3E
+.byte $23, $27, $2B, $2F, $33, $37, $3B, $3F, $23, $27, $2B, $2F, $33, $37, $3B, $3F
+.byte $20, $24, $28, $2C, $30, $34, $38, $3C, $20, $24, $28, $2C, $30, $34, $38, $3C
+.byte $21, $25, $29, $2D, $31, $35, $39, $3D, $21, $25, $29, $2D, $31, $35, $39, $3D
+.byte $22, $26, $2A, $2E, $32, $36, $3A, $3E, $22, $26, $2A, $2E, $32, $36, $3A, $3E
+.byte $23, $27, $2B, $2F, $33, $37, $3B, $3F, $23, $27, $2B, $2F, $33, $37, $3B, $3F
