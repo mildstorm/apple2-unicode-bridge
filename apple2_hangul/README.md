@@ -25,22 +25,23 @@ AppleWin의 C++ 소스 코드를 전혀 수정하지 않고, 표준 **Super Seri
 
 ---
 
-## 2. 생성 및 구성 파일
+## 2. 구성 파일
 
-- [hangul.dsk](file:///D:/msys64/home/milds/AppleWin/hangul.dsk) / [bin/hangul.dsk](file:///D:/msys64/home/milds/AppleWin/bin/hangul.dsk): 부팅 가능한 통합 DOS 3.3 디스크 이미지 (`HANGUL` 드라이버 및 `DEMO` 프로그램 탑재).
-- [hangul_server.exe](file:///D:/msys64/home/milds/AppleWin/hangul_server.exe) / [bin/hangul_server.exe](file:///D:/msys64/home/milds/AppleWin/bin/hangul_server.exe): 독립 실행 가능한 단일 PC 서버 실행 파일 (`NotoSerifCJK16.ttf` 폰트 내장).
-- [hangul_server.py](file:///D:/msys64/home/milds/AppleWin/hangul_server.py): PC 측 통신/폰트 서버 소스 코드.
-- [hangul_driver.s](file:///D:/msys64/home/milds/AppleWin/hangul_driver.s): 6502 어셈블리 소스.
-- [HANGUL.BIN](file:///D:/msys64/home/milds/AppleWin/HANGUL.BIN): Apple II 상주 바이너리 드라이버 ($4000).
+- `disk/hangul.dsk`: 부팅 가능한 통합 DOS 3.3 디스크 이미지 (`HANGUL` 드라이버 및 `DEMO` 프로그램 탑재).
+- `driver/hangul_driver.s`: 단일 독립 6502 어셈블리 소스 (`xa hangul_driver.s -o HANGUL.BIN`으로 빌드 가능).
+- `driver/HANGUL.BIN`: Apple II 상주 바이너리 드라이버 ($4000).
+- `server/hangul_server.py`: PC 측 통신/폰트 서버 소스 코드.
+- `server/requirements.txt`: Python 의존 라이브러리 목록 (`pip install -r requirements.txt`).
 
 ---
 
 ## 3. 사용 방법
 
 ### 1단계: PC 서버 실행
-명령 프롬프트 또는 파워셸에서 `hangul_server.exe` (또는 `python hangul_server.py`)를 실행합니다:
+파이썬 패키지를 설치한 후 서버를 실행합니다:
 ```bash
-./hangul_server.exe
+pip install -r server/requirements.txt
+python server/hangul_server.py
 ```
 
 ### 2단계: AppleWin 실행 및 디스크 부팅

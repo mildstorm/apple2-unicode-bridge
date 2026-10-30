@@ -13,10 +13,9 @@ Apple II와 PC(Super Serial Card, Slot 2) 통신을 이용한 **한글 11,172자
 * **동적 폰트 래스터라이징**: PC에서 FreeType / TrueType(Gulim, NotoSerifCJK 등) 폰트를 14x16 비트맵으로 래스터라이즈하여 Apple II HGR(280x192) 화면에 스트리밍 전송
 * **이체자 자동 정규화**: 웹/위키 복사 텍스트의 신자체(예: `隠`)를 정체자(`隱`)로 자동 매핑 지원
 * **폴더 구조**:
-  * `driver/`: 6502 어셈블리 드라이버 소스 (`hangul_driver.s`, `HANGUL.BIN` 등)
   * `disk/`: 부팅 가능한 DOS 3.3 디스크 이미지 (`hangul.dsk`)
-  * `server/`: Python 폰트 래스터라이저 및 터미널 서버 (`hangul_server.py`)
-  * `tools/`: DOS 3.3 디스크 이미지 분석 및 BASIC 인젝션 도구 (`inject_basic.py`)
+  * `driver/`: 6502 어셈블리 드라이버 소스 및 빌드 바이너리 (`hangul_driver.s`, `HANGUL.BIN`)
+  * `server/`: Python 폰트 래스터라이저 및 터미널 서버 (`hangul_server.py`, `requirements.txt`)
 
 ---
 
