@@ -123,3 +123,11 @@ RUN DEMO
 BASIC 프롬프트 `]`에서 `&`만 입력하고 Enter를 누르면 전체화면 한글 그래픽 콘솔 모드로 진입합니다:
 - `Ctrl+K` 또는 `` ` `` 키: 한글 2벌식 / 영문 전환
 - `ESC` 키: BASIC 프롬프트로 복귀
+
+---
+
+## 5. 라이선스 (License)
+
+- **소스 코드 및 문서**: [MIT License](LICENSE) (Copyright (c) 2026 mildstorm)
+- **번들 폰트**: `NotoSerifCJK16.ttf`는 [SIL Open Font License 1.1](https://scripts.sil.org/OFL)에 따라 배포됩니다.
+

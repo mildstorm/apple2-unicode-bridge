@@ -1,7 +1,7 @@
 # Apple II Unicode Bridge (`apple2-unicode-bridge`)
 
 [![Platform](https://img.shields.io/badge/Platform-Apple%20II%20%7C%20AppleWin-blue.svg)](https://github.com/mildstorm/apple2-unicode-bridge)
-[![License](https://img.shields.io/badge/License-GPL%20v2-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Encoding](https://img.shields.io/badge/Encoding-UTF--8%20%2F%20Unicode-orange.svg)](#)
 [![Display](https://img.shields.io/badge/Display-HGR%20280x192-purple.svg)](#)
 
@@ -190,7 +190,7 @@ Watch the Apple II high-resolution screen seamlessly display high-density Korean
 The PC server supports any TrueType (`.ttf`), OpenType (`.otf`), or TrueType Collection (`.ttc`) font. You can specify fonts for your preferred writing system (e.g., Cyrillic, Greek, Japanese, Arabic, Hebrew, or custom retro pixel fonts):
 
 ```bash
-python hangul_server.py --font /path/to/your-font.ttf
+python unicode_server.py --font /path/to/your-font.ttf
 ```
 
 Common system fonts you can use:
@@ -214,4 +214,5 @@ Please feel free to open an issue or submit a Pull Request!
 
 ## 📄 License
 
-This project is licensed under the [GNU General Public License v2.0](LICENSE). You are free to use, modify, and distribute this software under the terms of the GPL-2.0.
+- **Source Code & Documentation**: Licensed under the [MIT License](LICENSE). Copyright (c) 2026 mildstorm.
+- **Bundled Fonts**: `NotoSerifCJK16.ttf` is licensed under the [SIL Open Font License 1.1](https://scripts.sil.org/OFL).
