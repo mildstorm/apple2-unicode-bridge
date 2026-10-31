@@ -194,6 +194,49 @@ Watch the Apple II high-resolution screen seamlessly display high-density Korean
 
 ---
 
+## 💾 Standalone Font Subsetter & Offline DSK Baking
+
+If you want to run multilingual Apple II programs **completely standalone from floppy disk** without having the PC serial font server running, you can extract the exact font subset used by your BASIC programs and bake them into the DSK image as a binary `FONT` file (loaded at `$6000`).
+
+### 1. Principles of Font Subsetting on Retro Systems
+- **Overcoming 140 KB Floppy Capacity**: Storing the full Unicode Hangul syllabus (11,172 characters ≈ 357 KB) or tens of thousands of Hanja characters exceeds the entire capacity of a 140 KB DOS 3.3 floppy disk.
+- **Extracting Only Used Glyphs**: By scanning your BASIC source and extracting only the unique characters actually referenced (for instance, the 77 unique Hanja and Hangul characters across *Je-mang-mae-ga* and `DEMO`), the entire font table is compressed down to **only 2.7 KB** (occupying just 12 disk sectors).
+- **Fast Local Rendering in RAM**: On boot, the `HELLO` startup script executes `BLOAD FONT`, placing the font table at `$6000`. The 6502 driver immediately detects the cache and draws glyphs directly from local RAM with zero communication latency.
+
+### 2. Building & Injecting the Font Table
+Run `build_font_dsk.py` to scan BASIC programs and automatically package the font binary into the disk:
+
+```bash
+# Scan all BASIC programs in unicode.dsk and inject FONT binary
+python build_font_dsk.py --dsk unicode.dsk
+
+# Or target specific BASIC programs (e.g. DEMO, JEMANG)
+python build_font_dsk.py --dsk unicode.dsk --programs DEMO,JEMANG
+```
+
+- **What `build_font_dsk.py` does**:
+  1. Scans the selected BASIC programs (`DEMO`, `JEMANG`, etc.) and extracts all unique Unicode characters.
+  2. Renders high-quality 14×16 bitmap glyphs using host TrueType fonts via FreeType.
+  3. Uses `AppleCommander` to inject the `FONT` binary into the DSK image at `$6000` and automatically patches `HELLO` with `BLOAD FONT`.
+  4. Now you can boot `unicode.dsk` in AppleWin or on real hardware and run `RUN DEMO` or `RUN JEMANG` with zero PC connection!
+
+### 3. Automatic Synchronization via `inject_basic.py`
+When authoring or modifying BASIC code on your PC, using `inject_basic.py` automatically synchronizes newly introduced characters into the DSK's `FONT` table in a single step:
+
+```bash
+python inject_basic.py
+```
+
+### 4. Binary Rendering Integrity Verification (`verify_dsk_font.py`)
+To mathematically verify that the baked `FONT` binary inside the DSK renders correctly without any glyph corruption:
+
+```bash
+python verify_dsk_font.py
+```
+- Extracts the raw binary `FONT` from the DSK image and renders pixel-perfect Apple II HGR (280×192) screen captures ([`verified_standalone_jemang.png`](docs/images/verified_standalone_jemang.png) and [`verified_standalone_demo.png`](docs/images/verified_standalone_demo.png)).
+
+---
+
 ## 🌐 Customizing Fonts for Any Language
 
 The PC server supports any TrueType (`.ttf`), OpenType (`.otf`), or TrueType Collection (`.ttc`) font. You can specify fonts for your preferred writing system (e.g., Cyrillic, Greek, Japanese, Arabic, Hebrew, or custom retro pixel fonts):
