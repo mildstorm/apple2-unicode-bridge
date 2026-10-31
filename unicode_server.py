@@ -41,6 +41,7 @@ else:
 
 # Default Font Candidates: prioritize Gulim (굴림/돋움) which has pixel-perfect 14x14 embedded bitmaps for all Korean & Hanja
 FONT_CANDIDATES = [
+    # Windows system fonts
     r"C:\Windows\Fonts\gulim.ttc",
     r"C:\Windows\Fonts\gulimche.ttc",
     r"C:\Windows\Fonts\dotum.ttc",
@@ -49,13 +50,16 @@ FONT_CANDIDATES = [
     r"C:\Windows\Fonts\msjh.ttc",       # Microsoft JhengHei (Full CJK Ideographs)
     r"C:\Windows\Fonts\simsun.ttc",     # SimSun (Full CJK Ideographs)
     r"C:\Windows\Fonts\mingliub.ttc",
+    # macOS / Linux system fonts
+    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+    "/Library/Fonts/Arial Unicode.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+    # Local project fonts
     os.path.join(EXE_DIR, "NotoSerifCJK16.ttf"),
     os.path.join(SCRIPT_DIR, "NotoSerifCJK16.ttf"),
-    "NotoSerifCJK16.ttf",
-    r"D:\msys64\home\milds\AppleWin\NotoSerifCJK16.ttf",
-    r"D:\msys64\home\milds\AppleWin\bin\NotoSerifCJK16.ttf",
-    r"D:\msys64\home\milds\picoFreeRTOS\FreeRTOS\Demo\CORTEX_M0+_RP2040\library\mcufont\decoder\fonts\NotoSerifCJK16.ttf",
-    r"D:\msys64\home\milds\picoFreeRTOS\FreeRTOS\Demo\CORTEX_M0+_RP2040\library\mcufont\decoder\fonts\HANBatang.ttf"
+    os.path.join(SCRIPT_DIR, "fonts", "NotoSerifCJK16.ttf"),
+    "NotoSerifCJK16.ttf"
 ]
 
 # Hanja Variant Mapping: map common CJK variant ideographs (신자체/간체/이체자) to standard Korean Hanja

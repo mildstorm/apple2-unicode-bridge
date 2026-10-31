@@ -9,7 +9,7 @@ and injects them directly into hangul.dsk as an Applesoft BASIC file.
 import os
 import sys
 import shutil
-import subprocess
+from ac_tool import put_file
 
 TOKENS = {
     'END': 0x80, 'FOR': 0x81, 'NEXT': 0x82, 'DATA': 0x83, 'INPUT': 0x84,
@@ -90,17 +90,9 @@ def build_applesoft_program(lines, start_addr=0x0801):
     prog.extend([0x00, 0x00])
     return prog
 
-def inject_to_dsk(dsk_path, file_name, lines):
+def inject_to_dsk(dsk_path, file_name, lines, custom_ac=None):
     prog_bytes = build_applesoft_program(lines)
-    tok_file = "temp_prog.tok"
-    with open(tok_file, "wb") as f:
-        f.write(prog_bytes)
-
-    ac_jar = r"D:\msys64\home\milds\adt\build\AppleCommander-1.3.5.13-ac.jar"
-    subprocess.run(["java", "-jar", ac_jar, "-d", dsk_path, file_name], capture_output=True)
-    subprocess.run(f'java -jar "{ac_jar}" -p {dsk_path} {file_name} A 0x0801 < {tok_file}', shell=True, check=True)
-    if os.path.exists(tok_file):
-        os.remove(tok_file)
+    put_file(dsk_path, file_name, "A", 0x0801, prog_bytes, custom_ac=custom_ac)
 
     # Sync to bin if exists
     bin_dsk = os.path.join("bin", os.path.basename(dsk_path))
@@ -113,7 +105,7 @@ def inject_to_dsk(dsk_path, file_name, lines):
     try:
         from build_font_dsk import process_dsk
         print("[폰트 자동 갱신] 프로그램에 사용된 글리프를 DSK 'FONT' 파일에 동기화합니다...")
-        process_dsk(dsk_path)
+        process_dsk(dsk_path, custom_ac=custom_ac)
     except Exception as e:
         print(f"[폰트 동기화 건너뜀] {e}")
 
@@ -146,23 +138,8 @@ def interactive_mode():
             break
 
     if lines:
-        inject_to_dsk("hangul.dsk", file_name, lines)
-    else:
-        print("입력된 코드가 없습니다.")
+        dsk_path = "unicode.dsk" if os.path.exists("unicode.dsk") else "hangul.dsk"
+        inject_to_dsk(dsk_path, file_name, lines)
 
-if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        # File mode
-        target_file = sys.argv[1]
-        lines = []
-        with open(target_file, "r", encoding="utf-8") as f:
-            for l in f:
-                l = l.strip()
-                if not l: continue
-                parts = l.split(" ", 1)
-                if parts[0].isdigit():
-                    lines.append((int(parts[0]), parts[1] if len(parts) > 1 else ""))
-        prog_name = os.path.splitext(os.path.basename(target_file))[0].upper()[:8]
-        inject_to_dsk("hangul.dsk", prog_name, lines)
-    else:
-        interactive_mode()
+if __name__ == '__main__':
+    interactive_mode()

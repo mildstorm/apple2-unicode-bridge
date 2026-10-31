@@ -68,16 +68,62 @@ Applesoft BASIC 프롬프트에서 `&` 명령어를 사용하여 한글과 한�
 
 ## 2. 생성 및 구성 파일
 
-- [unicode.dsk](file:///D:/msys64/home/milds/AppleWin/unicode.dsk): 부팅 가능한 통합 DOS 3.3 디스크 이미지 (`UNICODE.BIN` 드라이버, 독립 실행용 `FONT` 파일 및 `DEMO`/`JEMANG` 프로그램 탑재).
-- [build_font_dsk.py](file:///D:/msys64/home/milds/AppleWin/build_font_dsk.py): BASIC 프로그램에서 사용된 글자만 추출하여 DSK 내 `FONT` 파일로 자동 베이킹하는 서브셋 빌더.
-- [unicode_server.exe](file:///D:/msys64/home/milds/AppleWin/unicode_server.exe): 독립 실행 가능한 단일 PC 서버 실행 파일 (`NotoSerifCJK16.ttf` 폰트 내장).
-- [unicode_server.py](file:///D:/msys64/home/milds/AppleWin/unicode_server.py): PC 측 범용 유니코드 통신/폰트 서버 소스 코드.
-- [unicode_driver.s](file:///D:/msys64/home/milds/AppleWin/unicode_driver.s): 6502 어셈블리 드라이버 소스.
-- [UNICODE.BIN](file:///D:/msys64/home/milds/AppleWin/UNICODE.BIN): Apple II 상주 바이너리 드라이버 ($4000).
+- [`unicode.dsk`](unicode.dsk): 부팅 가능한 통합 DOS 3.3 디스크 이미지 (`UNICODE.BIN` 드라이버, 독립 실행용 `FONT` 파일 및 `DEMO`/`JEMANG` 프로그램 탑재).
+- [`ac_tool.py`](ac_tool.py): AppleCommander 연동 및 DSK 디스크 관리 표준 유틸리티 모듈 & CLI 도구.
+- [`build_font_dsk.py`](build_font_dsk.py): BASIC 프로그램에서 사용된 글자만 추출하여 DSK 내 `FONT` 파일로 자동 베이킹하는 서브셋 빌더.
+- [`inject_basic.py`](inject_basic.py): PC에서 한글 BASIC 프로그램을 입력/주입하고 폰트 서브셋을 자동 동기화하는 도구.
+- [`verify_dsk_font.py`](verify_dsk_font.py): DSK 내 `FONT` 바이너리를 역추출하여 렌더링 무결성을 검증하는 도구.
+- [`unicode_server.exe`](unicode_server.exe): 독립 실행 가능한 단일 PC 서버 실행 파일 (`NotoSerifCJK16.ttf` 폰트 내장).
+- [`unicode_server.py`](unicode_server.py): PC 측 범용 유니코드 통신/폰트 서버 소스 코드.
+- [`unicode_driver.s`](unicode_driver.s): 6502 어셈블리 드라이버 소스.
+- [`UNICODE.BIN`](UNICODE.BIN): Apple II 상주 바이너리 드라이버 ($4000).
 
 ---
 
-## 3. 사용 방법
+## 3. 환경 설정 및 필수 도구 가이드 (Environment Setup)
+
+누구나 아래 절차에 따라 간편하게 개발 및 디스크 제작 환경을 구축할 수 있습니다. **스크립트에는 일체의 개인 경로가 포함되어 있지 않으며**, 표준 환경 변수 및 상대 경로 자동 탐색을 지원합니다.
+
+### 3.1 필수 요구사항
+1. **Python 3.8 이상**:
+   - 필수 패키지 설치:
+     ```bash
+     pip install pillow freetype-py
+     ```
+2. **Java 런타임 (JRE / JDK 8 이상)**:
+   - AppleCommander 실행을 위해 Java가 필요합니다. 터미널에서 `java -version`을 입력하여 설치 여부를 확인하세요.
+
+### 3.2 AppleCommander 설정 (3가지 방법 중 택 1)
+디스크(.dsk) 파일 주입 및 추출을 담당하는 AppleCommander는 다음 3가지 방법 중 하나로 자유롭게 구성할 수 있습니다:
+
+- **방법 1 (가장 간단 - 기본 제공)**:
+  - 본 저장소의 [`tools/`](tools/) 폴더에 `AppleCommander.jar`가 기본 배치되어 있습니다. 따라서 별도의 환경설정 없이도 `build_font_dsk.py`, `inject_basic.py`, `verify_dsk_font.py` 등의 모든 스크립트가 자동으로 도구를 감지하여 실행됩니다.
+- **방법 2 (시스템 환경 변수 등록 - 권장)**:
+  - 이미 PC의 다른 위치에 AppleCommander가 있거나 전역으로 관리하고 싶다면 환경 변수를 등록합니다:
+    - **Windows (PowerShell)**:
+      ```powershell
+      [System.Environment]::SetEnvironmentVariable('APPLECOMMANDER_JAR', 'C:\경로\AppleCommander.jar', 'User')
+      ```
+    - **Linux / macOS (`~/.bashrc` 또는 `~/.zshrc`)**:
+      ```bash
+      export APPLECOMMANDER_JAR="/usr/local/bin/AppleCommander.jar"
+      ```
+- **방법 3 (실행 시 직접 옵션 전달)**:
+  - 각 스크립트 실행 시 `--ac-jar` 옵션으로 JAR 파일 경로를 명시합니다:
+    ```bash
+    python build_font_dsk.py --dsk unicode.dsk --ac-jar "C:\tools\AppleCommander.jar"
+    ```
+
+### 3.3 원클릭 환경설정 자동 진단 (`ac_tool.py`)
+아래 명령어를 실행하면 Java 설치 여부와 AppleCommander 설정 상태가 올바른지 한눈에 확인할 수 있습니다:
+
+```bash
+python ac_tool.py check
+```
+
+---
+
+## 4. 사용 방법 (실시간 PC 폰트 서버 스트리밍)
 
 ### 1단계: PC 서버 실행
 명령 프롬프트 또는 파워셸에서 `unicode_server.exe` (또는 `python unicode_server.py`)를 실행합니다:
@@ -89,41 +135,6 @@ Applesoft BASIC 프롬프트에서 `&` 명령어를 사용하여 한글과 한�
 1. `Release\AppleWin.exe`를 실행합니다. (Slot 2 SSC는 TCP 포트 1977로 자동 구성되어 있습니다.)
 2. 드라이브 1에 `unicode.dsk`를 넣고 부팅(F2)합니다.
 3. 부팅 안내 화면과 함께 `]` 프롬프트가 나타납니다.
-
----
-
-## 4. 검증된 동작 테스트
-
-### 테스트 A: 한글 및 漢字(한자) 내장 데모 실행
-Apple II BASIC 프롬프트에서 다음을 입력합니다:
-```basic
-RUN DEMO
-```
-- 화면이 즉시 HGR 고해상도 그래픽 모드로 전환되며:
-  1. `안녕하세요 Apple II!`
-  2. `天地玄黃 宇宙洪荒`
-  3. `한글과 漢字 출력 성공!`
-  4. `1977 - 2026 RETRO COMPUTING`
-  문장이 고품질 글리프로 깨끗하게 출력됩니다.
-
-### 테스트 B: 사용자가 직접 BASIC 프로그램 입력
-1. AppleWin에서 다음과 같이 타이핑합니다:
-   ```basic
-   10 & "
-   ```
-2. 여기서 **`Ctrl+K`** 키를 누릅니다.
-3. PC 팝업창이 나타납니다. 한글이나 한자를 입력하고 Enter를 누릅니다:
-   - 예: `안녕 漢字`
-4. 따옴표와 Enter를 입력하여 행을 완성합니다:
-   ```basic
-   "
-   ```
-5. `RUN`을 입력하여 실행하면 HGR 화면에 한글과 한자가 완벽하게 출력됩니다.
-
-### 테스트 C: 대화형 터미널 모드
-BASIC 프롬프트 `]`에서 `&`만 입력하고 Enter를 누르면 전체화면 한글 그래픽 콘솔 모드로 진입합니다:
-- `Ctrl+K` 또는 `` ` `` 키: 한글 2벌식 / 영문 전환
-- `ESC` 키: BASIC 프롬프트로 복귀
 
 ---
 
@@ -170,7 +181,42 @@ python verify_dsk_font.py
 
 ---
 
-## 6. 라이선스 (License)
+## 6. 검증된 동작 테스트
+
+### 테스트 A: 한글 및 漢字(한자) 내장 데모 실행
+Apple II BASIC 프롬프트에서 다음을 입력합니다:
+```basic
+RUN DEMO
+```
+- 화면이 즉시 HGR 고해상도 그래픽 모드로 전환되며:
+  1. `안녕하세요 Apple II!`
+  2. `天地玄黃 宇宙洪荒`
+  3. `한글과 漢字 출력 성공!`
+  4. `1977 - 2026 RETRO COMPUTING`
+  문장이 고품질 글리프로 깨끗하게 출력됩니다.
+
+### 테스트 B: 사용자가 직접 BASIC 프로그램 입력
+1. AppleWin에서 다음과 같이 타이핑합니다:
+   ```basic
+   10 & "
+   ```
+2. 여기서 **`Ctrl+K`** 키를 누릅니다.
+3. PC 팝업창이 나타납니다. 한글이나 한자를 입력하고 Enter를 누릅니다:
+   - 예: `안녕 漢字`
+4. 따옴표와 Enter를 입력하여 행을 완성합니다:
+   ```basic
+   "
+   ```
+5. `RUN`을 입력하여 실행하면 HGR 화면에 한글과 한자가 완벽하게 출력됩니다.
+
+### 테스트 C: 대화형 터미널 모드
+BASIC 프롬프트 `]`에서 `&`만 입력하고 Enter를 누르면 전체화면 한글 그래픽 콘솔 모드로 진입합니다:
+- `Ctrl+K` 또는 `` ` `` 키: 한글 2벌식 / 영문 전환
+- `ESC` 키: BASIC 프롬프트로 복귀
+
+---
+
+## 7. 라이선스 (License)
 
 - **소스 코드 및 문서**: [MIT License](LICENSE) (Copyright (c) 2026 mildstorm)
 - **번들 폰트**: `NotoSerifCJK16.ttf`는 [SIL Open Font License 1.1](https://scripts.sil.org/OFL)에 따라 배포됩니다.

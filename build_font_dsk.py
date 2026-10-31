@@ -16,7 +16,7 @@ import os
 import sys
 import re
 import shutil
-import subprocess
+import argparse
 
 if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
     try:
@@ -24,32 +24,13 @@ if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
     except Exception:
         pass
 
-AC_JAR = r"D:\msys64\home\milds\adt\build\AppleCommander-1.3.5.13-ac.jar"
+from ac_tool import list_dsk_files, export_text_file, put_file, find_applecommander
 
 try:
     from unicode_server import HangulRasterizer
 except ImportError:
-    # If run from another directory
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from unicode_server import HangulRasterizer
-
-def list_dsk_files(dsk_path):
-    """Returns a list of (file_type, file_name) from the DSK image."""
-    cmd = ["java", "-jar", AC_JAR, "-l", dsk_path]
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    files = []
-    for line in res.stdout.splitlines():
-        # Match lines like: '  A 003 DEMO ' or '* B 006 HANGUL '
-        m = re.match(r'^\s*[*]?\s*([A-Z])\s+\d+\s+([A-Za-z0-9_\-\.]+)', line)
-        if m:
-            files.append((m.group(1), m.group(2)))
-    return files
-
-def export_dsk_file(dsk_path, file_name):
-    """Exports a text/BASIC file from the DSK image."""
-    cmd = ["java", "-jar", AC_JAR, "-e", dsk_path, file_name]
-    res = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
-    return res.stdout
 
 def extract_used_characters(text):
     """
@@ -115,23 +96,7 @@ def build_font_table(chars, rasterizer):
 
     return bytes(buf)
 
-def inject_font_into_dsk(dsk_path, font_bytes):
-    """Injects font binary into DSK at address $6000 as 'FONT'."""
-    temp_font = "temp_font.bin"
-    with open(temp_font, "wb") as f:
-        f.write(font_bytes)
-
-    # Delete existing FONT if present
-    subprocess.run(["java", "-jar", AC_JAR, "-d", dsk_path, "FONT"], capture_output=True)
-
-    # Put FONT file with binary type at $6000
-    cmd = f'java -jar "{AC_JAR}" -p {dsk_path} FONT B 0x6000 < {temp_font}'
-    subprocess.run(cmd, shell=True, check=True)
-
-    if os.path.exists(temp_font):
-        os.remove(temp_font)
-
-def patch_hello_program(dsk_path):
+def patch_hello_program(dsk_path, custom_ac=None):
     """
     Updates the HELLO program in DSK to load FONT at $6000 upon booting.
     """
@@ -152,24 +117,15 @@ def patch_hello_program(dsk_path):
     ]
 
     prog_bytes = build_applesoft_program(hello_lines)
-    temp_hello = "temp_hello.tok"
-    with open(temp_hello, "wb") as f:
-        f.write(prog_bytes)
+    put_file(dsk_path, "HELLO", "A", 0x0801, prog_bytes, custom_ac=custom_ac)
 
-    subprocess.run(["java", "-jar", AC_JAR, "-d", dsk_path, "HELLO"], capture_output=True)
-    cmd = f'java -jar "{AC_JAR}" -p {dsk_path} HELLO A 0x0801 < {temp_hello}'
-    subprocess.run(cmd, shell=True, check=True)
-
-    if os.path.exists(temp_hello):
-        os.remove(temp_hello)
-
-def process_dsk(dsk_path, specific_programs=None):
+def process_dsk(dsk_path, specific_programs=None, custom_ac=None):
     if not os.path.exists(dsk_path):
         print(f"[오류] DSK 파일을 찾을 수 없습니다: {dsk_path}")
         return False
 
     print(f"\n[1/4] DSK 이미지 분석 중: {dsk_path}")
-    files = list_dsk_files(dsk_path)
+    files = list_dsk_files(dsk_path, custom_ac=custom_ac)
     basic_files = [name for ftype, name in files if ftype == 'A' and name not in ('HELLO', 'MASTER', 'COPYA', 'RENUMBER', 'CONVERT13', 'START13', 'SLOT#')]
 
     if specific_programs:
@@ -181,7 +137,7 @@ def process_dsk(dsk_path, specific_programs=None):
 
     all_chars = set()
     for prog in target_programs:
-        content = export_dsk_file(dsk_path, prog)
+        content = export_text_file(dsk_path, prog, custom_ac=custom_ac)
         chars = extract_used_characters(content)
         if chars:
             print(f"  - '{prog}': {len(chars)}글자 발견 -> {''.join(chars[:15])}{'...' if len(chars) > 15 else ''}")
@@ -201,8 +157,8 @@ def process_dsk(dsk_path, specific_programs=None):
     print(f"  * 생성된 FONT 바이너리 크기: {len(font_bytes)} 바이트 (메모리 로드 주소: $6000)")
 
     print(f"\n[4/4] DSK 이미지에 'FONT' 파일 주입 및 부팅 스크립트(HELLO) 패치 중...")
-    inject_font_into_dsk(dsk_path, font_bytes)
-    patch_hello_program(dsk_path)
+    put_file(dsk_path, "FONT", "B", 0x6000, font_bytes, custom_ac=custom_ac)
+    patch_hello_program(dsk_path, custom_ac=custom_ac)
 
     # Sync to bin if exists
     bin_dsk = os.path.join("bin", os.path.basename(dsk_path))
@@ -220,11 +176,11 @@ def process_dsk(dsk_path, specific_programs=None):
     return True
 
 if __name__ == '__main__':
-    import argparse
     parser = argparse.ArgumentParser(description="Apple II Standalone Font Subsetter and DSK Injector")
     parser.add_argument("--dsk", default="unicode.dsk", help="Path to Apple II DSK image (default: unicode.dsk)")
     parser.add_argument("--programs", default=None, help="Comma-separated list of BASIC programs to extract fonts from (default: all)")
+    parser.add_argument("--ac-jar", default=None, help="Explicit path to AppleCommander JAR file")
     args = parser.parse_args()
 
     progs = args.programs.split(",") if args.programs else None
-    process_dsk(args.dsk, progs)
+    process_dsk(args.dsk, progs, custom_ac=args.ac_jar)

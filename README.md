@@ -145,6 +145,7 @@ While the live font server streams unlimited Unicode glyphs dynamically, you can
 | :--- | :--- |
 | **`unicode_server.py`** | Universal Unicode font co-processor & streaming serial/TCP server (Python 3). |
 | **`unicode_server.exe`** | Standalone pre-compiled Windows executable (bundled with default CJK font). |
+| **`ac_tool.py`** | AppleCommander management wrapper & standalone DSK inspection CLI. |
 | **`build_font_dsk.py`** | Automated font subsetter: extracts used glyphs, bakes `FONT` binary ($6000) into DSK for standalone execution. |
 | **`inject_basic.py`** | PC-to-Apple II BASIC injector tool with automatic font synchronization. |
 | **`verify_dsk_font.py`** | Verification utility confirming glyph rendering directly from DSK `FONT` binary. |
@@ -153,6 +154,47 @@ While the live font server streams unlimited Unicode glyphs dynamically, you can
 | **`UNICODE.BIN`** | Assembled 6502 binary driver ($4000). |
 | **`NotoSerifCJK16.ttf`** | Default bundled 16px TrueType font covering extensive CJK & Unicode glyphs. |
 | **`README_HANGUL.md`** | Detailed Korean documentation (한글 사용 설명서). |
+
+---
+
+## ⚙️ Environment Setup & Prerequisites
+
+All scripts in this repository are designed to work out-of-the-box on Windows, macOS, and Linux without containing any user-specific hardcoded paths.
+
+### 1. Requirements
+- **Python 3.8+**:
+  ```bash
+  pip install pillow freetype-py
+  ```
+- **Java Runtime (JRE / JDK 8+)**: Required for running AppleCommander disk operations. Verify with `java -version`.
+
+### 2. AppleCommander Configuration (3 Easy Options)
+AppleCommander (`AppleCommander.jar`) handles reading and writing DOS 3.3 `.dsk` disk images. Choose any of the following options:
+
+- **Option A (Zero-config, Default)**:  
+  A pre-packaged copy of `AppleCommander.jar` is included directly in the [`tools/`](tools/) directory. All scripts detect it automatically without any setup needed.
+- **Option B (System Environment Variable)**:  
+  Point to an existing AppleCommander JAR on your machine:
+  - **Windows (PowerShell)**:
+    ```powershell
+    [System.Environment]::SetEnvironmentVariable('APPLECOMMANDER_JAR', 'C:\path\to\AppleCommander.jar', 'User')
+    ```
+  - **Linux / macOS (`~/.bashrc` or `~/.zshrc`)**:
+    ```bash
+    export APPLECOMMANDER_JAR="/usr/local/bin/AppleCommander.jar"
+    ```
+- **Option C (CLI Parameter)**:  
+  Pass the path directly when invoking scripts:
+  ```bash
+  python build_font_dsk.py --dsk unicode.dsk --ac-jar "/path/to/AppleCommander.jar"
+  ```
+
+### 3. Diagnose Environment (`ac_tool.py check`)
+Run the built-in diagnostic tool anytime to check Java and AppleCommander readiness:
+
+```bash
+python ac_tool.py check
+```
 
 ---
 
