@@ -68,7 +68,8 @@ Applesoft BASIC 프롬프트에서 `&` 명령어를 사용하여 한글과 한�
 
 ## 2. 생성 및 구성 파일
 
-- [unicode.dsk](file:///D:/msys64/home/milds/AppleWin/unicode.dsk): 부팅 가능한 통합 DOS 3.3 디스크 이미지 (`UNICODE.BIN` 드라이버 및 `DEMO` 프로그램 탑재).
+- [unicode.dsk](file:///D:/msys64/home/milds/AppleWin/unicode.dsk): 부팅 가능한 통합 DOS 3.3 디스크 이미지 (`UNICODE.BIN` 드라이버, 독립 실행용 `FONT` 파일 및 `DEMO`/`JEMANG` 프로그램 탑재).
+- [build_font_dsk.py](file:///D:/msys64/home/milds/AppleWin/build_font_dsk.py): BASIC 프로그램에서 사용된 글자만 추출하여 DSK 내 `FONT` 파일로 자동 베이킹하는 서브셋 빌더.
 - [unicode_server.exe](file:///D:/msys64/home/milds/AppleWin/unicode_server.exe): 독립 실행 가능한 단일 PC 서버 실행 파일 (`NotoSerifCJK16.ttf` 폰트 내장).
 - [unicode_server.py](file:///D:/msys64/home/milds/AppleWin/unicode_server.py): PC 측 범용 유니코드 통신/폰트 서버 소스 코드.
 - [unicode_driver.s](file:///D:/msys64/home/milds/AppleWin/unicode_driver.s): 6502 어셈블리 드라이버 소스.
@@ -126,7 +127,50 @@ BASIC 프롬프트 `]`에서 `&`만 입력하고 Enter를 누르면 전체화면
 
 ---
 
-## 5. 라이선스 (License)
+## 5. 독립 실행형(Standalone / 오프라인) 폰트 서브셋 빌더 및 폰트 재사용
+
+PC 폰트 서버(Super Serial 연결) 없이 **Apple II 단독으로 DSK 디스크만 부팅하여 한글/한자를 출력**하고 싶을 때 사용합니다. 프로그램 문장에 실제로 사용된 글리프(14×16 비트맵)만 추출하여 디스크 내에 `FONT` ($6000) 파일로 저장(Baking)합니다.
+
+### 5.1 폰트 서브셋(경량화) 재사용 원리
+- **140KB 디스크 용량 한계 극복**: 유니코드 한글 11,172자(약 357KB)나 수만 자의 漢字를 140KB 플로피 디스크에 전부 담는 것은 불가능합니다.
+- **문장 사용 글자만 추출**: 예를 들어 *제망매가*와 `DEMO` 전체에 사용된 서로 다른 77자의 한글과 漢字 글꼴만 추출하면 **단 2.7 KB** (디스크 섹터 단 12개)에 불과합니다.
+- **메모리 상주 및 고속 렌더링**: 부팅 시 `HELLO` 프로그램이 `BLOAD FONT`를 실행하여 `$6000` 메모리에 폰트 테이블을 상주시키며, 드라이버가 통신 대기 없이 로컬 메모리에서 즉시 고속으로 HGR 화면에 글자를 렌더링합니다.
+
+### 5.2 폰트 서브셋 빌드 및 디스크 주입 명령어
+새로운 한글/한자 BASIC 프로그램을 작성하거나 기존 프로그램을 수정한 후 아래 명령을 실행합니다:
+
+```bash
+# unicode.dsk 내의 모든 BASIC 프로그램을 스캔하여 FONT 파일 자동 생성 및 주입
+python build_font_dsk.py --dsk unicode.dsk
+
+# 특정 BASIC 프로그램(예: DEMO, JEMANG)만 지정하여 폰트 추출
+python build_font_dsk.py --dsk unicode.dsk --programs DEMO,JEMANG
+```
+
+- **동작 단계**:
+  1. DSK 내의 BASIC 프로그램(`DEMO`, `JEMANG` 등)을 스캔하여 사용된 유니코드 한글/한자를 자동 추출합니다.
+  2. PC의 고품질 TrueType 글꼴을 통해 해당 글자들만의 14×16 비트맵 테이블(`FONT`, 2~3KB)을 생성합니다.
+  3. `AppleCommander`를 통해 DSK에 `FONT` 바이너리($6000)로 주입하고 `HELLO` 부팅 스크립트에 `BLOAD FONT`를 추가합니다.
+  4. 부팅 시 폰트가 메모리(`$6000`)에 상주하므로, PC 폰트 서버 연결 없이도 `RUN DEMO`나 `RUN JEMANG`을 즉시 독립 실행할 수 있습니다.
+
+### 5.3 BASIC 프로그램 작성 도구 (`inject_basic.py`) 연동
+PC에서 새 BASIC 프로그램을 작성하여 디스크에 넣을 때, `inject_basic.py`를 사용하면 프로그램 주입과 동시에 폰트 서브셋도 DSK의 `FONT` 파일에 자동으로 갱신됩니다:
+
+```bash
+python inject_basic.py
+```
+
+### 5.4 폰트 바이너리 렌더링 무결성 검증 (`verify_dsk_font.py`)
+DSK 디스크 이미지에 주입된 `FONT` 바이너리 데이터를 직접 역추출하여 글리프가 왜곡이나 깨짐 없이 정상 렌더링되는지 검증할 수 있습니다:
+
+```bash
+python verify_dsk_font.py
+```
+- 실행 시 DSK 내 `FONT` 바이너리를 직접 읽어 `verified_standalone_jemang.png` 및 `verified_standalone_demo.png` 화면 캡처 이미지를 생성합니다.
+
+---
+
+## 6. 라이선스 (License)
 
 - **소스 코드 및 문서**: [MIT License](LICENSE) (Copyright (c) 2026 mildstorm)
 - **번들 폰트**: `NotoSerifCJK16.ttf`는 [SIL Open Font License 1.1](https://scripts.sil.org/OFL)에 따라 배포됩니다.

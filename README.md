@@ -131,6 +131,12 @@ Entering `&` at the Applesoft prompt `]` drops directly into a full-screen inter
 - Instant toggle between localized input and English with `Ctrl+K` or `` ` `` (backtick).
 - `ESC` returns safely back to Applesoft BASIC.
 
+### 5. Standalone Execution via Font Subsetting (No PC Server Required!)
+While the live font server streams unlimited Unicode glyphs dynamically, you can also bake the exact subset of fonts used by your BASIC programs directly into the `.dsk` disk image:
+- **Zero PC dependency**: Once baked, the Apple II boots and runs multilingual graphics programs entirely standalone from floppy disk.
+- **Microscopic footprint**: Extracting all 77 unique Hanja and Hangul characters for the *Je-mang-mae-ga* and `DEMO` suites consumes **only 2.7 KB** of disk space (as binary `FONT` loaded at `$6000`).
+- **One-click baking tool**: Run `python build_font_dsk.py --dsk unicode.dsk` to scan all BASIC programs, rasterize their characters, inject the `FONT` binary, and patch `HELLO` automatically.
+
 ---
 
 ## 📦 Repository Structure
@@ -139,8 +145,11 @@ Entering `&` at the Applesoft prompt `]` drops directly into a full-screen inter
 | :--- | :--- |
 | **`unicode_server.py`** | Universal Unicode font co-processor & streaming serial/TCP server (Python 3). |
 | **`unicode_server.exe`** | Standalone pre-compiled Windows executable (bundled with default CJK font). |
+| **`build_font_dsk.py`** | Automated font subsetter: extracts used glyphs, bakes `FONT` binary ($6000) into DSK for standalone execution. |
+| **`inject_basic.py`** | PC-to-Apple II BASIC injector tool with automatic font synchronization. |
+| **`verify_dsk_font.py`** | Verification utility confirming glyph rendering directly from DSK `FONT` binary. |
 | **`unicode_driver.s`** | 6502 assembly source code for the Apple II resident driver ($4000). |
-| **`unicode.dsk`** | Ready-to-boot DOS 3.3 disk image containing `UNICODE.BIN` driver & demos. |
+| **`unicode.dsk`** | Ready-to-boot DOS 3.3 disk image containing `UNICODE.BIN`, standalone `FONT`, and demo programs. |
 | **`UNICODE.BIN`** | Assembled 6502 binary driver ($4000). |
 | **`NotoSerifCJK16.ttf`** | Default bundled 16px TrueType font covering extensive CJK & Unicode glyphs. |
 | **`README_HANGUL.md`** | Detailed Korean documentation (한글 사용 설명서). |
