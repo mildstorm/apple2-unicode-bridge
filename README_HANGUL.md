@@ -73,7 +73,7 @@ Applesoft BASIC 프롬프트에서 `&` 명령어를 사용하여 한글과 한�
 - [`build_font_dsk.py`](build_font_dsk.py): BASIC 프로그램에서 사용된 글자만 추출하여 DSK 내 `FONT` 파일로 자동 베이킹하는 서브셋 빌더.
 - [`inject_basic.py`](inject_basic.py): PC에서 한글 BASIC 프로그램을 입력/주입하고 폰트 서브셋을 자동 동기화하는 도구.
 - [`verify_dsk_font.py`](verify_dsk_font.py): DSK 내 `FONT` 바이너리를 역추출하여 렌더링 무결성을 검증하는 도구.
-- [`unicode_server.exe`](unicode_server.exe): 독립 실행 가능한 단일 PC 서버 실행 파일 (`NotoSerifCJK16.ttf` 폰트 내장).
+- `unicode_server.exe`: 독립 실행 가능한 단일 PC 서버 실행 파일 (`NotoSerifCJK16.ttf` 폰트 내장, Releases 릴리스 탭 제공).
 - [`unicode_server.py`](unicode_server.py): PC 측 범용 유니코드 통신/폰트 서버 소스 코드.
 - [`unicode_driver.s`](unicode_driver.s): 6502 어셈블리 드라이버 소스.
 - [`UNICODE.BIN`](UNICODE.BIN): Apple II 상주 바이너리 드라이버 ($4000).
