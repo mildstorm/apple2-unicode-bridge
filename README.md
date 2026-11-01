@@ -414,58 +414,105 @@ python tools/preview_fonts.py
 
 ---
 
-## 🧪 Live Operations & End-to-End Verification
+## 🎨 Practical Multi-Font Guide
 
-To guarantee that all features operate properly on real Apple II hardware and emulators without regressions, the repository provides comprehensive, hands-on automated verification suites that directly test both the **live streaming serial protocol** and **actual AppleWin emulator execution with pixel-level screen validation**.
+This section provides practical patterns, real-world Applesoft BASIC code examples, and instructions on **how to effectively combine, switch, and deploy multiple fonts** in Apple II games, utilities, and software.
 
-### 1. Hands-On Dynamic Font Slot Verification (`tools/test_dynamic_fonts_live.py`)
+### 1. Bringing Your Own Custom TTF Fonts
+Beyond the bundled example fonts, you can use any TrueType or OpenType font (`.ttf`, `.otf`) of your choice:
+1. Place your `.ttf` file into the `fonts/` directory (or use its absolute/relative path).
+2. Register the font dynamically using `/font-add` either in your BASIC program or via the CLI:
+   ```basic
+   10 & "/font-add 1 NanumGothic.ttf"
+   20 & "/font-add myfont C:\Windows\Fonts\batang.ttc"
+   ```
 
-Run the automated live verification script to test dynamic font slot registration, modification, removal, and rendering across both live TCP and offline DSK modes:
+---
 
-```bash
-python tools/test_dynamic_fonts_live.py
+### 2. Real-World Use Cases & Complete Applesoft BASIC Code
+
+#### Scenario A: Classic RPG Dialogue System (Multi-Font Composition)
+Elevate your Apple II software aesthetics by styling the game title, character name, spoken dialogue, and HUD with dedicated typefaces:
+* **Title / Location**: Grand classical Hanja/Hangul Koei Romance of the Three Kingdoms III font (`[F:title]`)
+* **Speaker Name**: Elegant traditional Korean brush serif MS-DOS Myeongjo (`[F:speaker]`)
+* **Spoken Dialogue**: Crisp, readable 14px pixel font Galmuri14 (`[F:body]`)
+* **Status Bar / HUD**: Compact 9px micro pixel font Galmuri9 (`[F:hud]`)
+
+```basic
+10 REM ====================================================
+20 REM  Classic RPG Multi-Font Dialogue Window Example
+30 REM ====================================================
+40 & "/font-add title Sam3KRFont.ttf"
+50 & "/font-add speaker DOSMyungjo.ttf"
+60 & "/font-add body Galmuri14.ttf"
+70 & "/font-add hud Galmuri9.ttf"
+80 & "/clear"
+90 & "[F:title]\K[ 長安城 皇宮 ]\N"
+100 & ""
+110 & "[F:speaker]\K제갈공명(諸葛孔明):\N"
+120 & "[F:body]\K주공, 동남풍(東南風)이 불기 시작했습니다.\N"
+130 & "[F:body]\K지금 즉시 화공(火攻)을 명하셔야 합니다!\N"
+140 & ""
+150 & "[F:hud]\KHP: 950/950  MP: 320/320  GOLD: 12500 G  TURN: 42\N"
+160 END
 ```
 
-This verification automatically executes the following sequence:
-
-1. **Live TCP Font Server Protocol**:
-   - Performs Applesoft BASIC handshake with `HangulTerminalServer`.
-   - Sends `/font-add 1 neodgm.ttf` (Slot registration) -> verifies server ACK `0x00`.
-   - Sends `[F:1]안녕` -> verifies receipt of 14×16 glyph bitmap packets (`CMD_DRAW_GLYPH 0x81`).
-   - Sends `/font-add 1 DOSMyungjo.ttf` (Slot modification/update) -> verifies immediate slot remapping.
-   - Sends `[F:1]명조` -> verifies updated font rasterization packets.
-   - Sends `/font-del 1` (Slot removal) -> verifies safe unregistration.
-
-2. **Standalone DSK Baking & Live AppleWin Execution**:
-   - Generates a dedicated `FONTTEST` Applesoft BASIC program and injects it into `unicode.dsk`.
-   - Executes `build_font_dsk.py` to extract all referenced characters across all registered fonts into a standalone `FONT` binary ($6000).
-   - Automatically launches `AppleWin.exe -d1 unicode.dsk`.
-   - Types `RUN FONTTEST` into the Apple II keyboard buffer after DOS 3.3 boot.
-   - Captures the real AppleWin window via Win32 GDI `PrintWindow`.
-   - Analyzes display pixels to verify **over 7,700 active green phosphor pixels** on the HGR graphics screen.
-   - Saves the verified live screenshot to `docs/images/actual_fonttest_live.png`:
-
-![Actual Live AppleWin Font Test](docs/images/actual_fonttest_live.png)
-
-### 2. Complete 5-Suite Operations Test (`tools/test_all_operations.py`)
-
-Run the complete multi-tier test suite verifying every component from font loading to live emulator rendering:
-
-```bash
-python tools/test_all_operations.py
+#### Scenario B: In-Sentence Keyword Highlighting via Inline Tags
+Using `[F:slot]` inline tags lets you switch fonts mid-sentence without forcing a newline:
+```basic
+10 & "[F:body]\KThe hero obtained \N[F:title]\K傳說의 寶劍\N[F:body]\K!\N"
+20 & "[F:neodgm]\KStandard dialogue text \N[F:speaker]\K[IMPORTANT NOTICE]\N[F:neodgm]\K returns to normal.\N"
 ```
 
-| Suite | Scope | Description |
-| :---: | :--- | :--- |
-| **TEST 1** | **Font Loading & FreeType** | Verifies 14×16 glyph rasterization across all 7 bundled TrueType fonts. |
-| **TEST 2** | **DSK Baking & Parsing** | Validates DSK file injection, `FONT` table structure, and binary integrity. |
-| **TEST 3** | **TCP Streaming Protocol** | Tests live socket communication, `0x87` string commands, and `0x81` glyph packet delivery. |
-| **TEST 4** | **Multi-Font & Program Slots** | Verifies inline tag parsing (`[F:...]`), fallback chaining, and `/font-add` / `/font-del` APIs. |
-| **TEST 5** | **Live AppleWin Emulator** | Launches real `AppleWin.exe`, runs `RUN DEMO`, captures the HGR screen, and validates active pixels (>3,800 pixels). |
+#### Scenario C: Memory-Efficient Font Slot Reuse (Scene Transitions)
+You can dynamically modify and reassign existing font slots on the fly to conserve memory across game chapters:
+```basic
+100 REM [Town Scene] - Map Slot 1 to peaceful Gothic font
+110 & "/font-add 1 DOSGothic.ttf"
+120 & "[F:1]\KWelcome to the village tavern.\N"
+...
+200 REM [Dungeon Scene] - Reassign Slot 1 to dramatic Myeongjo!
+210 & "/font-add 1 DOSMyungjo.ttf"
+220 & "[F:1]\KA dark iron gate creaks open in the subterranean dungeon...\N"
+```
 
-Captured live verification screenshot from `TEST 5`:
+---
 
-![Actual Live AppleWin Demo](docs/images/actual_applewin_live_demo.png)
+### 3. Standalone Floppy (DSK) Multi-Font Storage & Offline Execution
+
+> **Q. If my program uses multiple fonts, can it run completely standalone on a real Apple II without the PC serial connection?**  
+> **A. Yes, 100%!**
+
+Programs utilizing multiple fonts can be baked directly into the floppy disk image:
+
+1. **One-Command Subsetting & Packaging**:
+   ```bash
+   python build_font_dsk.py --dsk unicode.dsk
+   ```
+2. **How It Works (Automated Multi-Font Subsetting)**:
+   - `build_font_dsk.py` scans your BASIC programs and tracks every `/font-add`, `/font-del`, and `[F:...]` tag.
+   - For each character, it invokes the respective font engine (e.g., characters tagged `[F:title]` are rendered using `Sam3KRFont.ttf`, while characters tagged `[F:body]` are rendered using `Galmuri14.ttf`).
+   - All extracted 14×16 glyph bitmaps are merged into a single compact `$6000` binary (`FONT`) and injected into the DSK image.
+   - The disk's `HELLO` boot script is automatically patched with `BLOAD FONT`.
+3. **Result**:
+   - Boot `unicode.dsk` in AppleWin or insert it into a real Apple II disk drive. Type `RUN YOURPROG`.
+   - All designated fonts render instantly and accurately from local Apple II RAM at full hardware speed with **zero PC or serial connection required**!
+
+---
+
+### 4. Multi-Font Command & Syntax Cheat Sheet
+
+| Command / Tag | Example Syntax | Description |
+| :--- | :--- | :--- |
+| **`/font-add` (Number)** | `& "/font-add 1 neodgm.ttf"` | Maps font to Slot 1 (updates slot if already registered) |
+| **`/font-add` (Alias)** | `& "/font-add title Sam3KRFont.ttf"` | Maps font to custom alias (`title`, `body`, `hud`, etc.) |
+| **`/font-del`** | `& "/font-del title"` | Unregisters slot or alias (`/unalias` also supported) |
+| **`/font-clear`** | `& "/font-clear"` | Resets all registered custom font slots |
+| **`/font`** | `& "/font 1"` or `& "/font body"` | Switches default font for subsequent lines |
+| **`[F:...]` (Inline)** | `& "[F:1]Hangul [F:title]Hanja"` | Inline font switching anywhere inside a string |
+| **`\F...\` (Inline)** | `& "\F1\Hangul \F:title\Hanja"` | Alternative backslash syntax for inline switching |
+| **`--font` (CLI)** | `--font "1=neodgm.ttf, title=Sam3KRFont.ttf"` | Pre-registers slots at server launch |
+| **Fallback Chaining** | `--font "Galmuri14.ttf, Sam3KRFont.ttf"` | Automatically searches fallback fonts when glyphs are missing |
 
 ---
 
@@ -488,3 +535,5 @@ Please feel free to open an issue or submit a Pull Request!
   - `Neo둥근모` (`neodgm.ttf`): [SIL Open Font License 1.1](fonts/README.md) by Dalgona.
   - `Sam3KRFont.ttf`, `DOSGothic.ttf`, `DOSMyungjo.ttf`: [MIT License](fonts/README.md) by Damheo Lee.
   - `NotoSerifCJK16.ttf`: [SIL Open Font License 1.1](https://scripts.sil.org/OFL) by Google / Adobe.
+
+> 💡 **Developer Note**: Automated end-to-end regression tests can be executed via `python tools/test_all_operations.py`.

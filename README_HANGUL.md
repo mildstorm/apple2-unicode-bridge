@@ -375,53 +375,104 @@ python tools/preview_fonts.py
 
 ---
 
-## 8. 실구동 환경 자동 검증 (Live Verification)
+## 8. 실전 다중 폰트 활용 완벽 가이드 (Practical Multi-Font Guide)
 
-모든 기능이 실제 Apple II 하드웨어 및 AppleWin 에뮬레이터에서 문제없이 작동하는지 확인하기 위해, 시리얼 통신 스트리밍과 독립 실행형 DSK 에뮬레이터 실행을 **픽셀 단위로 직접 검증**하는 종합 자동화 검증 스크립트를 제공합니다.
+이 섹션은 Apple II 프로그램(게임, 유틸리티, 데모 등)에서 **여러 폰트를 실제로 조합하고 활용할 때 필요한 핵심 방법과 실전 예제**를 제공합니다.
 
-### 8.1 동적 폰트 슬롯 실구동 통합 검증 (`tools/test_dynamic_fonts_live.py`)
+### 8.1 사용자 임의의 외부 폰트(TTF) 추가 및 사용 방법
+번들된 예제 폰트 외에도, 사용자가 인터넷 등에서 구한 임의의 TrueType/OpenType 폰트(`.ttf`, `.otf`)를 자유롭게 추가할 수 있습니다:
+1. 원하는 `.ttf` 폰트 파일을 프로젝트의 `fonts/` 폴더에 복사하거나, 절대 경로/상대 경로를 직접 지정합니다.
+2. BASIC 프로그램이나 서버 커맨드에서 파일명을 등록하면 즉시 사용 가능합니다:
+   ```basic
+   10 & "/font-add 1 NanumGothic.ttf"
+   20 & "/font-add myfont C:\Windows\Fonts\batang.ttc"
+   ```
 
-프로그램 레벨 폰트 동적 등록, 변경, 제거 및 인라인 태그 출력이 정상 동작하는지 테스트합니다:
+---
 
-```bash
-python tools/test_dynamic_fonts_live.py
+### 8.2 실전 활용 시나리오 및 예제 코드
+
+#### 시나리오 A: 고전 RPG 게임 대화창 (다양한 폰트 조합)
+게임 타이틀, 화자 이름, 대화 본문, 하단 상태창(HUD)을 서로 다른 전용 폰트로 분리하여 화면의 품격을 높이는 실전 예제입니다:
+* **타이틀/장소명**: 웅장한 고전 한자/한글 삼국지3 폰트 (`[F:title]`)
+* **화자(등장인물)**: 격식 있는 붓글씨 느낌의 도스명조 (`[F:speaker]`)
+* **대화 본문**: 가독성이 뛰어난 14px 픽셀 갈무리14 (`[F:body]`)
+* **상태창/HUD**: 좁은 공간에 많은 정보를 담는 9px 초소형 픽셀 갈무리9 (`[F:hud]`)
+
+```basic
+10 REM ====================================================
+20 REM  고전 RPG 멀티 폰트 대화창 실전 예제
+30 REM ====================================================
+40 & "/font-add title Sam3KRFont.ttf"
+50 & "/font-add speaker DOSMyungjo.ttf"
+60 & "/font-add body Galmuri14.ttf"
+70 & "/font-add hud Galmuri9.ttf"
+80 & "/clear"
+90 & "[F:title]\K[ 長安城 皇宮 ]\N"
+100 & ""
+110 & "[F:speaker]\K제갈공명(諸葛孔明):\N"
+120 & "[F:body]\K주공, 동남풍(東南風)이 불기 시작했습니다.\N"
+130 & "[F:body]\K지금 즉시 화공(火攻)을 명하셔야 합니다!\N"
+140 & ""
+150 & "[F:hud]\KHP: 950/950  MP: 320/320  GOLD: 12500 G  TURN: 42\N"
+160 END
 ```
 
-* **동작 단계**:
-  1. **실시간 TCP 폰트 서버 모드 검증**:
-     - `HangulTerminalServer`와 소켓 핸드셰이크 수행
-     - `/font-add 1 neodgm.ttf` (슬롯 등록) 전송 및 `0x00` 응답 수신 확인
-     - `[F:1]안녕` 전송 시 14×16 글리프 비트맵 패킷(`0x81`) 수신 확인
-     - `/font-add 1 DOSMyungjo.ttf` (슬롯 변경) 전송 후 `[F:1]명조`가 명조체로 즉시 재래스터라이징되는지 검증
-     - `/font-del 1` (슬롯 제거) 정상 해제 확인
-  2. **오프라인 DSK 베이킹 & 실제 AppleWin 에뮬레이터 구동**:
-     - `FONTTEST` BASIC 코드를 생성하여 `unicode.dsk`에 주입
-     - `build_font_dsk.py`를 실행하여 폰트 테이블($6000) 자동 빌드
-     - 실제 `AppleWin.exe -d1 unicode.dsk`를 구동하고 DOS 3.3 부팅 후 키보드로 `RUN FONTTEST` 입력
-     - Win32 GDI `PrintWindow`로 에뮬레이터 화면을 캡처하여 **7,700개 이상의 활성 녹색 형광 픽셀** 렌더링 확인
-     - 캡처 결과 파일 저장: `docs/images/actual_fonttest_live.png`
-
-![실제 AppleWin FONTTEST 구동 캡처](docs/images/actual_fonttest_live.png)
-
-### 8.2 전체 시스템 5종 종합 운영 검증 (`tools/test_all_operations.py`)
-
-폰트 로딩부터 실제 에뮬레이터 그래픽 렌더링까지 전체 파이프라인을 5개 영역으로 나누어 검증합니다:
-
-```bash
-python tools/test_all_operations.py
+#### 시나리오 B: 한 문장 안에서 특정 키워드만 다른 폰트로 강조
+인라인 태그 `[F:슬롯]`을 사용하면 줄바꿈 없이 문장 중간에 폰트를 자유자재로 변경할 수 있습니다:
+```basic
+10 & "[F:body]\K용사가 \N[F:title]\K傳說의 寶劍\N[F:body]\K을 손에 넣었습니다!\N"
+20 & "[F:neodgm]\K일반 도스 폰트 대화 도중에 \N[F:speaker]\K[명조체 알림]\N[F:neodgm]\K으로 복귀\N"
 ```
 
-| 검증 단계 | 검증 대상 | 내용 |
-| :---: | :--- | :--- |
-| **TEST 1** | **폰트 로딩 & FreeType** | 번들된 7종 TTF 글리프 래스터라이징 정상 검증 |
-| **TEST 2** | **DSK 빌드 및 무결성** | DSK 파일 주입, `FONT` 테이블 구조 및 바이너리 일치 검증 |
-| **TEST 3** | **TCP 스트리밍 프로토콜** | 라이브 소켓 통신, `0x87` 문자열 명령 및 `0x81` 글리프 패킷 전송 검증 |
-| **TEST 4** | **다중 폰트 & 동적 슬롯** | 인라인 태그(`[F:...]`), 폴백 체이닝, `/font-add` / `/font-del` API 검증 |
-| **TEST 5** | **실제 AppleWin 에뮬레이터** | 실제 `AppleWin.exe`를 실행하여 `RUN DEMO` 구동 및 HGR 화면 픽셀(3,800개 이상) 활성화 검증 |
+#### 시나리오 C: 챕터/스테이지 전환에 따른 폰트 슬롯 재활용
+메모리 슬롯을 낭비하지 않고, 스테이지나 씬이 바뀔 때 동일 슬롯에 새 폰트를 덮어써서(Modify) 재활용합니다:
+```basic
+100 REM [마을 씬] - 슬롯 1에 편안한 고딕 폰트 지정
+110 & "/font-add 1 DOSGothic.ttf"
+120 & "[F:1]\K마을 여관에 들어섰습니다.\N"
+...
+200 REM [던전 씬 진입] - 동일한 슬롯 1을 공포스러운 도스명조로 덮어쓰기 변경!
+210 & "/font-add 1 DOSMyungjo.ttf"
+220 & "[F:1]\K어두컴컴한 지하 던전의 삐걱거리는 문이 열립니다...\N"
+```
 
-TEST 5에서 실시간 캡처된 에뮬레이터 구동 화면:
+---
 
-![실제 AppleWin DEMO 구동 캡처](docs/images/actual_applewin_live_demo.png)
+### 8.3 오프라인 독립 실행(DSK) 시 다중 폰트 저장 원리 및 방법
+
+> **Q. 프로그램에서 여러 폰트를 혼용했는데, 나중에 PC 시리얼 통신 없이 디스켓 단독으로 구동 가능한가요?**  
+> **A. 네! 100% 완벽하게 지원됩니다.**
+
+PC 시리얼 케이블이 연결되지 않은 단독 Apple II 플로피 환경에서도 작성한 다중 폰트 프로그램이 그대로 구동됩니다:
+
+1. **저장 명령 한 줄 실행**:
+   ```bash
+   python build_font_dsk.py --dsk unicode.dsk
+   ```
+2. **동작 원리 (자동 서브셋 빌더)**:
+   - `build_font_dsk.py`가 디스크 내 BASIC 프로그램을 분석하여, 각 문자열에 적용된 `/font-add`, `/font-del`, `[F:...]` 태그의 흐름을 추적합니다.
+   - 예컨대 `[F:title]`로 지정된 "長安城"은 `Sam3KRFont.ttf`에서 래스터라이징하고, `[F:body]`로 지정된 "동남풍"은 `Galmuri14.ttf`에서 래스터라이징합니다.
+   - 추출된 모든 글리프 비트맵(14×16)을 단 하나의 압축된 `$6000` 바이너리(`FONT`) 파일로 병합하여 DSK 이미지에 주입합니다.
+   - 디스크 부팅용 `HELLO` 프로그램에 `BLOAD FONT`를 자동으로 패치합니다.
+3. **결과**:
+   - 이제 PC 연결 없이 `unicode.dsk`를 실물 Apple II 드라이브나 AppleWin에 넣고 부팅한 뒤 `RUN MYPROG`를 실행하면, **PC 폰트 서버가 켜져 있지 않아도 각 글자마다 지정했던 여러 폰트 디자인 그대로 고속 렌더링**됩니다.
+
+---
+
+### 8.4 다중 폰트 제어 문법 빠른 참조표 (Cheat Sheet)
+
+| 명령 / 태그 | 사용 예시 | 설명 |
+| :--- | :--- | :--- |
+| **`/font-add`** | `& "/font-add 1 neodgm.ttf"` | 슬롯 1번에 폰트 등록 (이미 존재 시 새 폰트로 변경) |
+| **`/font-add` (별칭)** | `& "/font-add title Sam3KRFont.ttf"` | 영문 별칭(title, body 등)으로 폰트 등록 |
+| **`/font-del`** | `& "/font-del title"` | 등록된 폰트 슬롯/별칭 제거 (`/unalias` 지원) |
+| **`/font-clear`** | `& "/font-clear"` | 등록된 모든 커스텀 폰트 슬롯 초기화 |
+| **`/font`** | `& "/font 1"` 또는 `& "/font body"` | 이후 출력될 기본 폰트를 지정 슬롯으로 전환 |
+| **`[F:...]` (인라인)** | `& "[F:1]한글 [F:title]漢字"` | 문자열 중간에 폰트를 즉시 전환하여 출력 |
+| **`\F...\` (인라인)** | `& "\F1\한글 \F:title\漢字"` | 대괄호 대신 역슬래시를 사용하는 대체 문법 |
+| **`--font` (CLI 옵션)**| `--font "1=neodgm.ttf, title=Sam3KRFont.ttf"` | 서버 실행 시 슬롯 미리 등록 |
+| **폴백 체이닝** | `--font "Galmuri14.ttf, Sam3KRFont.ttf"` | 글리프 누락 시 다음 폰트로 자동 검색 |
 
 ---
 
@@ -433,4 +484,6 @@ TEST 5에서 실시간 캡처된 에뮬레이터 구동 화면:
   - `Neo둥근모` (`neodgm.ttf`): [SIL Open Font License 1.1](fonts/README.md) by Dalgona.
   - `Sam3KRFont.ttf`, `DOSGothic.ttf`, `DOSMyungjo.ttf`: [MIT License](fonts/README.md) by Damheo Lee.
   - `NotoSerifCJK16.ttf`: [SIL Open Font License 1.1](https://scripts.sil.org/OFL) by Google / Adobe.
+
+> 💡 **개발자 참고**: 전체 시스템 무결성 자동 테스트는 `python tools/test_all_operations.py`로 실행할 수 있습니다.
 
