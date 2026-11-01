@@ -180,6 +180,30 @@ def parse_font_segments(text):
 _RASTERIZER_CACHE = {}
 CUSTOM_FONT_ALIASES = {}
 
+def font_add(alias: str, font_path_or_name: str):
+    """Register or modify a font slot/alias."""
+    key = str(alias).strip().lower()
+    val = str(font_path_or_name).strip()
+    CUSTOM_FONT_ALIASES[key] = val
+    if key in _RASTERIZER_CACHE:
+        del _RASTERIZER_CACHE[key]
+    print(f"[FontManager] Registered/Updated font slot: '{key}' -> '{val}'")
+
+def font_del(alias: str):
+    """Remove/unregister a font slot/alias."""
+    key = str(alias).strip().lower()
+    if key in CUSTOM_FONT_ALIASES:
+        del CUSTOM_FONT_ALIASES[key]
+        if key in _RASTERIZER_CACHE:
+            del _RASTERIZER_CACHE[key]
+        print(f"[FontManager] Removed font slot: '{key}'")
+
+def font_clear():
+    """Clear all custom registered font slots/aliases."""
+    CUSTOM_FONT_ALIASES.clear()
+    _RASTERIZER_CACHE.clear()
+    print("[FontManager] Cleared all custom font slots")
+
 def register_font_mapping(font_arg):
     """
     Registers custom font mappings and aliases.
@@ -194,13 +218,11 @@ def register_font_mapping(font_arg):
     for item in entries:
         if "=" in item:
             alias, target = item.split("=", 1)
-            alias = alias.strip().lower()
-            target = target.strip()
-            CUSTOM_FONT_ALIASES[alias] = target
+            font_add(alias, target)
         else:
-            CUSTOM_FONT_ALIASES[str(plain_idx)] = item
+            font_add(str(plain_idx), item)
             stem = os.path.splitext(os.path.basename(item))[0].lower()
-            CUSTOM_FONT_ALIASES[stem] = item
+            font_add(stem, item)
             plain_idx += 1
 
 def get_font_rasterizer(font_identifier, fallback_rasterizer=None):
@@ -1215,14 +1237,25 @@ class HangulTerminalServer:
                         self.send_raw(bytes([0x00]))
                         continue
 
-                    # Dedicated command: & "/alias <name> <target>"
-                    if stripped_cmd.lower().startswith("/alias "):
+                    # Dedicated command: & "/font-add <slot> <font>" or & "/alias <slot> <font>"
+                    if stripped_cmd.lower().startswith(("/font-add ", "/alias ")):
                         parts = stripped_cmd.split()
                         if len(parts) >= 3:
-                            alias_name = parts[1].strip().lower()
-                            target_val = parts[2].strip()
-                            CUSTOM_FONT_ALIASES[alias_name] = target_val
-                            print(f"[System] Custom font alias registered: '{alias_name}' -> '{target_val}'")
+                            font_add(parts[1].strip(), parts[2].strip())
+                        self.send_raw(bytes([0x00]))
+                        continue
+
+                    # Dedicated command: & "/font-del <slot>" or & "/font-remove <slot>" or & "/unalias <slot>"
+                    if stripped_cmd.lower().startswith(("/font-del ", "/font-remove ", "/unalias ")):
+                        parts = stripped_cmd.split()
+                        if len(parts) >= 2:
+                            font_del(parts[1].strip())
+                        self.send_raw(bytes([0x00]))
+                        continue
+
+                    # Dedicated command: & "/font-clear"
+                    if stripped_cmd.lower() == "/font-clear":
+                        font_clear()
                         self.send_raw(bytes([0x00]))
                         continue
 

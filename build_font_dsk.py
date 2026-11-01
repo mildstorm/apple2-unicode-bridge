@@ -27,10 +27,16 @@ if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
 from ac_tool import list_dsk_files, export_text_file, put_file, find_applecommander
 
 try:
-    from unicode_server import HangulRasterizer, get_font_rasterizer, parse_font_segments, register_font_mapping, CUSTOM_FONT_ALIASES
+    from unicode_server import (
+        HangulRasterizer, get_font_rasterizer, parse_font_segments,
+        register_font_mapping, CUSTOM_FONT_ALIASES, font_add, font_del, font_clear
+    )
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from unicode_server import HangulRasterizer, get_font_rasterizer, parse_font_segments, register_font_mapping, CUSTOM_FONT_ALIASES
+    from unicode_server import (
+        HangulRasterizer, get_font_rasterizer, parse_font_segments,
+        register_font_mapping, CUSTOM_FONT_ALIASES, font_add, font_del, font_clear
+    )
 
 def extract_used_characters(text):
     """
@@ -91,12 +97,18 @@ def extract_font_tagged_characters(text, default_font=None):
             if m:
                 current_default = m.group(1).strip()
 
-        if '&' in trimmed and '/alias ' in trimmed.lower():
-            m = re.search(r'/alias\s+([A-Za-z0-9_.\-]+)\s+([A-Za-z0-9_.\-]+)', trimmed, re.IGNORECASE)
+        if '&' in trimmed and ('/font-add ' in trimmed.lower() or '/alias ' in trimmed.lower()):
+            m = re.search(r'/(?:font-add|alias)\s+([A-Za-z0-9_.\-]+)\s+([A-Za-z0-9_.\-]+)', trimmed, re.IGNORECASE)
             if m:
-                alias_name = m.group(1).strip().lower()
-                target_val = m.group(2).strip()
-                CUSTOM_FONT_ALIASES[alias_name] = target_val
+                font_add(m.group(1).strip(), m.group(2).strip())
+
+        if '&' in trimmed and ('/font-del ' in trimmed.lower() or '/font-remove ' in trimmed.lower() or '/unalias ' in trimmed.lower()):
+            m = re.search(r'/(?:font-del|font-remove|unalias)\s+([A-Za-z0-9_.\-]+)', trimmed, re.IGNORECASE)
+            if m:
+                font_del(m.group(1).strip())
+
+        if '&' in trimmed and '/font-clear' in trimmed.lower():
+            font_clear()
 
         segments = parse_font_segments(line)
         for font_ident, seg in segments:

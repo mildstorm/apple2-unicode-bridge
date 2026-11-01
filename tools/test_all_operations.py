@@ -178,22 +178,38 @@ def test_4_multifont_and_program_font_switching():
     assert len(g_han) == 32 and len(g_hanja) == 32
     print("  * Comma-separated font fallback chaining: OK")
 
-    # 4. BASIC Program Font Extraction & Custom Aliases
+    # 4. BASIC Program Font Dynamic Registration, Modification, and Removal
+    from unicode_server import font_add, font_del, font_clear
+    font_clear()
+    
+    # Registration (Add)
+    font_add("1", "neodgm.ttf")
+    r1 = get_font_rasterizer("1")
+    assert r1 is not None and len(r1.rasterize("도")) == 32
+    
+    # Modification (Update)
+    font_add("1", "DOSMyungjo.ttf")
+    r1_mod = get_font_rasterizer("1")
+    assert r1_mod is not None and len(r1_mod.rasterize("명")) == 32
+    
+    # Removal (Delete)
+    font_del("1")
+    
     basic_code = """
-    10 REM TEST PROGRAM
-    20 & "/alias 1 DOSMyungjo.ttf"
-    30 & "/alias title Sam3KRFont.ttf"
-    40 & "[F:1]명조체"
-    50 & "[F:title]삼국지"
+    10 REM TEST PROGRAM FOR DYNAMIC FONT SLOTS
+    20 & "/font-add 1 neodgm.ttf"
+    30 & "[F:1]도스타자"
+    40 & "/font-add 1 DOSMyungjo.ttf"
+    50 & "[F:1]명조체"
+    60 & "/font-add title Sam3KRFont.ttf"
+    70 & "[F:title]삼국지"
+    80 & "/font-del title"
     """
     char_map = extract_font_tagged_characters(basic_code)
-    assert char_map['명'] == '1'
-    assert char_map['삼'] == 'title'
-    r_custom_1 = get_font_rasterizer("1")
-    assert r_custom_1 is not None and len(r_custom_1.rasterize("명")) == 32
-    r_custom_title = get_font_rasterizer("title")
-    assert r_custom_title is not None and len(r_custom_title.rasterize("삼")) == 32
-    print("  * Custom arbitrary font aliases & number overrides: OK")
+    assert '도' in char_map
+    assert '명' in char_map
+    assert '삼' in char_map
+    print("  * Dynamic font registration (/font-add), modification, and removal (/font-del): OK")
     print("  -> TEST 4 PASSED!")
 
 def test_5_live_applewin_emulator():

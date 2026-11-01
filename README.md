@@ -346,39 +346,45 @@ python build_font_dsk.py --font "Galmuri14.ttf, neodgm.ttf, Sam3KRFont.ttf"
 ```
 When rendering a character, the engine searches the faces in order: if a glyph is missing in the primary font, it seamlessly falls back to the secondary and tertiary fonts.
 
-#### 4. Program-Level Font Switching & Inline Tags
-You can directly select or switch fonts within your Applesoft BASIC programs without restarting the server or driver:
+#### 4. Dynamic Font Registration, Modification, Removal & Display
+Rather than being restricted to rigid pre-registered configurations, the engine provides a fully dynamic font slot/alias registry. You can register, modify, or unregister any font slot on the fly:
 
-* **Inline Font Tags (`[F:name]` or `\F:name\`)**:
+* **Register & Modify (`/font-add` or `/alias`)**:
+  Assign or update font slots (numbers or custom names):
+  ```basic
+  10 & "/font-add 1 neodgm.ttf"        : REM Slot 1 mapped to Neo둥근모
+  20 & "/font-add title Sam3KRFont.ttf": REM Alias 'title' mapped to 삼국지3
+  30 & "/font-add body Galmuri14.ttf"  : REM Alias 'body' mapped to Galmuri14
+  40 & "/font-add 1 DOSMyungjo.ttf"    : REM Dynamically modify Slot 1 to DOS Myungjo!
+  ```
+  *(Also supported at CLI launch: `--font "1=neodgm.ttf, title=Sam3KRFont.ttf, body=Galmuri14.ttf"`)*.
+
+* **Remove & Clear (`/font-del`, `/font-clear`)**:
+  Unregister slots or reset custom mappings:
+  ```basic
+  50 & "/font-del title"   : REM Remove alias 'title' (/unalias also supported)
+  60 & "/font-clear"       : REM Clear all registered font slots
+  ```
+
+* **Multi-Font Display via Inline Tags (`[F:...]` or `\F...\`)**:
   Switch fonts on the fly anywhere inside a string:
   ```basic
-  10 & "[F:neodgm]도스타자방 [F:myungjo]명조체출력"
-  20 & "[F:sam3k]三國志英雄 [F:galmuri14]애플투한글"
-  30 & "[F:1]첫번째폰트 [F:2]두번째폰트 [F:3]세번째폰트"
+  70 & "[F:1]명조체 출력 [F:body]본문 갈무리 출력"
+  80 & "[F:neodgm]둥근모 [F:Sam3KRFont]삼국지 [F:DOSGothic]도스고딕"
+  90 & "\F1\슬롯 1번 폰트 \F:body\본문 폰트"
   ```
-  *(Escape-style `\F:neodgm\...` and `\F1\...` are also supported).*
-* **Dedicated Control Command (`& "/font <name>"`)**:
-  Changes the default font for all subsequent print statements:
+
+* **Change Default Font (`/font <name>`)**:
   ```basic
-  10 & "/font neodgm"
-  20 & "ALL SUBSEQUENT LINES WILL RENDER IN NEODGM"
-  30 & "/font myungjo"
-  40 & "THIS LINE SWITCHES TO DOS MYEONGJO"
+  100 & "/font 1"
+  110 & "ALL SUBSEQUENT LINES WILL RENDER IN SLOT 1"
   ```
-* **Pre-Registered Font Aliases**:
-  `galmuri14` (1), `neodgm` (2), `sam3k` (3), `myungjo` (4), `gothic` (5), `galmuri11` (6), `galmuri9` (7), `noto` (8).
-* **Arbitrary Font Number & Alias Customization**:
-  You can remap any number or define custom aliases via CLI or dynamically inside BASIC:
-  ```bash
-  # CLI: Map custom numbers and names to specific fonts
-  python unicode_server.py --font "1=DOSMyungjo.ttf, 2=neodgm.ttf, title=Sam3KRFont.ttf, body=Galmuri14.ttf"
-  ```
-  ```basic
-  REM BASIC: Remap aliases on the fly
-  10 & "/alias 1 DOSMyungjo.ttf"
-  20 & "/alias title Sam3KRFont.ttf"
-  30 & "[F:1]CUSTOM FONT 1 [F:title]TITLE FONT"
-  ```
+
+* **Example Font Assets (`fonts/` directory)**:
+  Bundled fonts (`Galmuri14.ttf`, `neodgm.ttf`, `Sam3KRFont.ttf`, `DOSMyungjo.ttf`, `DOSGothic.ttf`, `Galmuri11.ttf`, `Galmuri9.ttf`, `NotoSerifCJK16.ttf`) serve as ready-to-use example assets that can be mapped to any slot or referenced directly by filename.
+
+> [!TIP]
+> Both the **PC Font Server streaming mode** and the **Standalone Floppy DSK offline mode** support this exact same dynamic syntax! When baking a DSK with `build_font_dsk.py`, the builder inspects `/font-add`, `/font-del`, and `[F:...]` commands, generating the appropriate glyphs into the `$6000` cache.
 
 > [!TIP]
 > Both the **PC Font Server streaming mode** and the **Standalone Floppy DSK offline mode** support this exact same syntax! When baking a DSK with `build_font_dsk.py`, the builder inspects program tags and pre-renders each glyph with its designated font into the `$6000` cache.

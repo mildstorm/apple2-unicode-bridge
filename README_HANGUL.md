@@ -293,68 +293,59 @@ python build_font_dsk.py --font "Galmuri14.ttf, neodgm.ttf, Sam3KRFont.ttf"
   3. 이를 통해 한글 픽셀 폰트의 선명함과 대용량 CJK 폰트의 폭넓은 한자 지원을 동시에 누릴 수 있습니다.
   4. 지정된 순서대로 폰트 번호(`1`, `2`, `3`...) 및 파일명 별칭이 자동으로 등록됩니다.
 
-### 7.4 프로그램에서 원하는 폰트 직접 지정 및 전환 (Program-Level Font Switching)
+### 7.4 프로그램에서 폰트 동적 등록 · 변경 · 제거 및 다중 폰트 표시
 
-Applesoft BASIC 프로그램 소스 코드 내에서 원하는 폰트를 실시간으로 지정하여 글자별/라인별로 다른 폰트로 출력할 수 있습니다.
+폰트 번호나 별칭을 사전에 고정해 둘 필요 없이, **프로그램 실행 도중이나 커맨드라인에서 임의의 폰트를 자유롭게 등록(Add), 변경(Modify), 제거(Remove)하고 인라인 태그로 다채롭게 표시**할 수 있습니다. (`fonts/` 디렉터리에 제공되는 8종의 폰트는 손쉽게 등록하여 사용할 수 있는 훌륭한 예제 폰트들입니다.)
 
-#### 방법 1. 인라인 폰트 태그 (Inline Font Tags)
-문자열 안에서 원하는 위치에 폰트 태그를 넣어 글꼴을 즉시 전환합니다:
+#### 1. 폰트 등록 및 변경 (Add / Modify)
+슬롯 번호(1, 2, 3...)나 원하는 별칭(title, body, hud 등)에 폰트 파일을 매핑합니다. 이미 존재하는 슬롯에 다른 폰트를 지정하면 즉시 새로운 폰트로 **변경(Update)**됩니다:
 ```basic
-10 & "[F:neodgm]도스타자방 [F:myungjo]명조체출력"
-20 & "[F:sam3k]三國志英雄 [F:galmuri14]애플투한글"
-30 & "[F:1]첫번째폰트 [F:2]두번째폰트 [F:3]세번째폰트"
+10 & "/font-add 1 neodgm.ttf"        : REM 1번 슬롯에 Neo둥근모 등록
+20 & "/font-add title Sam3KRFont.ttf": REM title 별칭에 삼국지3 폰트 등록
+30 & "/font-add body Galmuri14.ttf"  : REM body 별칭에 갈무리14 등록
+40 & "/font-add 1 DOSMyungjo.ttf"    : REM 1번 슬롯을 도스명조체로 변경!
 ```
-* **이스케이프 방식(`\F...\`)도 지원**:
-  `10 & "\F:neodgm\도스 타자 \F:myungjo\명조체"`
-  `20 & "\F1\갈무리14 \F2\Neo둥근모 \F3\삼국지3"`
-* 태그는 화면에 출력되지 않고 폰트만 전환된 후 내용만 화면에 표시됩니다.
+* 커맨드라인에서도 동일하게 등록 가능:  
+  `python unicode_server.py --font "1=neodgm.ttf, title=Sam3KRFont.ttf, body=Galmuri14.ttf"`
 
-#### 방법 2. 독립 제어 명령 (`/font <이름 또는 번호>`)
-이후 출력되는 모든 텍스트의 기본 폰트를 한 번에 변경합니다:
+#### 2. 폰트 제거 및 초기화 (Remove / Clear)
+더 이상 사용하지 않는 슬롯이나 별칭을 해제하거나 전체를 초기화할 수 있습니다:
 ```basic
-10 & "/font neodgm"
-20 & "이제부터 나오는 모든 글은 둥근모 폰트로 출력됩니다"
-30 & "두 번째 줄도 둥근모로 유지됩니다"
-40 & "/font myungjo"
-50 & "이 줄부터는 도스명조체로 변경되어 출력됩니다"
+50 & "/font-del title"   : REM title 별칭 제거 (/font-remove 또는 /unalias 도 지원)
+60 & "/font-clear"       : REM 등록된 모든 커스텀 폰트 슬롯 초기화
 ```
 
-#### 사전 등록된 번들 폰트 별칭 (Aliases)
+#### 3. 등록된 폰트로 다중 폰트 표시 (Display via Inline Tags)
+등록된 슬롯 번호나 별칭, 또는 파일명을 인라인 태그(`[F:...]` 또는 `\F...\`)로 지정하여 한 줄 안에서도 여러 폰트를 혼용 출력할 수 있습니다:
+```basic
+70 & "[F:1]도스명조 출력 [F:body]본문 갈무리 출력"
+80 & "[F:neodgm]둥근모 [F:Sam3KRFont]삼국지 [F:DOSGothic]도스고딕"
+90 & "\F1\첫번째 슬롯 폰트 \F:body\본문 폰트"
+```
 
-| 별칭 (Alias) | 번호 | 실제 폰트 파일 | 스타일 |
-| :--- | :---: | :--- | :--- |
-| `galmuri14`, `galmuri`, `1` | 1 | `Galmuri14.ttf` | 14px 갈무리 (권장 기본) |
-| `neodgm`, `둥근모`, `dunggeunmo`, `2` | 2 | `neodgm.ttf` | 16px Neo둥근모 (도스타자) |
-| `sam3k`, `sam3kr`, `삼국지`, `3` | 3 | `Sam3KRFont.ttf` | 16px 삼국지3 한자/한글 |
-| `myungjo`, `dosmyungjo`, `명조`, `4` | 4 | `DOSMyungjo.ttf` | 16px 도스명조 |
-| `gothic`, `dosgothic`, `고딕`, `5` | 5 | `DOSGothic.ttf` | 16px 도스고딕 |
-| `galmuri11`, `6` | 6 | `Galmuri11.ttf` | 11px 갈무리 컴팩트 |
-| `galmuri9`, `7` | 7 | `Galmuri9.ttf` | 9px 갈무리 마이크로 |
-| `noto`, `notoserif`, `cjk`, `8` | 8 | `NotoSerifCJK16.ttf` | 14px NotoSerif 벡터 |
+#### 4. 전체 기본 폰트 전환 (Select Default Font)
+특정 폰트를 이후 출력의 기본 폰트로 전환하고 싶을 때는 `/font` 명령을 사용합니다:
+```basic
+100 & "/font 1"
+110 & "이 줄부터는 1번 폰트로 기본 출력됩니다"
+120 & "/font body"
+130 & "이 줄부터는 body 폰트로 기본 출력됩니다"
+```
 
-#### 방법 3. 폰트 번호 및 별칭 사용자 임의 재지정 (Custom Alias & Number Overrides)
-기본 번호나 별칭 외에, 사용자가 원하는 번호나 이름을 임의로 지정하여 사용할 수 있습니다:
-
-1. **커맨드라인에서 임의 지정 (`별칭=폰트파일명`)**:
-   ```bash
-   # 1번에 명조, 2번에 둥근모, title에 삼국지, body에 갈무리14 지정
-   python unicode_server.py --font "1=DOSMyungjo.ttf, 2=neodgm.ttf, title=Sam3KRFont.ttf, body=Galmuri14.ttf"
-   ```
-2. **BASIC 코드 내에서 실시간 동적 재지정 (`/alias <이름> <폰트>`)**:
-   ```basic
-   10 & "/alias 1 DOSMyungjo.ttf"
-   20 & "/alias title Sam3KRFont.ttf"
-   30 & "[F:1]원하는 폰트 1번 [F:title]제목용 폰트"
-   ```
-3. **파일명 직접 지정**:
-   `fonts/` 디렉터리에 넣은 임의의 TTF 파일명(확장자 제외 또는 포함)을 태그에 바로 사용 가능합니다:
-   ```basic
-   10 & "[F:MyFont]임의의 폰트 출력"
-   ```
+#### 예제 폰트 자산 목록 (`fonts/` 디렉터리)
+자유롭게 등록하여 테스트해 볼 수 있는 레트로 비트맵/벡터 폰트 예제들:
+* `Galmuri14.ttf` (갈무리 14px 픽셀 폰트)
+* `neodgm.ttf` (Neo둥근모 16px 도스타자 스타일)
+* `Sam3KRFont.ttf` (삼국지 3 한자/한글 16px 폰트)
+* `DOSMyungjo.ttf` (도스명조 16px 세리프 폰트)
+* `DOSGothic.ttf` (도스고딕 16px 고딕 폰트)
+* `Galmuri11.ttf` (갈무리 11px 컴팩트 폰트)
+* `Galmuri9.ttf` (갈무리 9px 마이크로 폰트)
+* `NotoSerifCJK16.ttf` (전 세계 다국어 지원 CJK 벡터 폰트)
 
 > [!TIP]
-> **PC 서버 스트리밍 모드**와 **독립형 플로피 DSK 오프라인 모드** 모두 동일한 태그 문법이 작동합니다!  
-> `build_font_dsk.py`가 디스크 내 BASIC 프로그램을 파싱할 때 `[F:neodgm]` 등의 태그를 인식하여 각 문자별로 지정된 폰트의 글리프를 `$6000` 캐시 테이블에 구워 넣으므로, PC 연결 없이도 완벽하게 동작합니다.
+> **PC 서버 스트리밍 모드**와 **독립형 플로피 DSK 오프라인 모드** 모두 동일한 등록/제거/표시 문법이 작동합니다!  
+> `build_font_dsk.py`가 디스크 내 BASIC 프로그램을 파싱할 때 `/font-add`, `/font-del`, `[F:...]` 태그의 흐름을 추적하여 각 문자별로 지정된 폰트의 비트맵을 `$6000` 캐시 테이블에 구워 넣으므로, PC 연결 없이도 완벽하게 동작합니다.
 
 ### 7.5 다중 폰트 및 크기별 라인 시연: `RUN DEMO`
 
