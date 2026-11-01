@@ -39,8 +39,13 @@ else:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     EXE_DIR = SCRIPT_DIR
 
-# Default Font Candidates: prioritize Gulim (굴림/돋움) which has pixel-perfect 14x14 embedded bitmaps for all Korean & Hanja
+# Default Font Candidates: prioritize Galmuri / Gulim (굴림/돋움) which has pixel-perfect 14x14 bitmaps for Korean & Hanja
 FONT_CANDIDATES = [
+    # Local project fonts (Galmuri pixel font or NotoSerif)
+    os.path.join(EXE_DIR, "Galmuri14.ttf"),
+    os.path.join(SCRIPT_DIR, "Galmuri14.ttf"),
+    os.path.join(SCRIPT_DIR, "fonts", "Galmuri14.ttf"),
+    "Galmuri14.ttf",
     # Windows system fonts
     r"C:\Windows\Fonts\gulim.ttc",
     r"C:\Windows\Fonts\gulimche.ttc",
@@ -55,7 +60,7 @@ FONT_CANDIDATES = [
     "/Library/Fonts/Arial Unicode.ttf",
     "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
     "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-    # Local project fonts
+    # Local fallback fonts
     os.path.join(EXE_DIR, "NotoSerifCJK16.ttf"),
     os.path.join(SCRIPT_DIR, "NotoSerifCJK16.ttf"),
     os.path.join(SCRIPT_DIR, "fonts", "NotoSerifCJK16.ttf"),
@@ -129,17 +134,56 @@ JUNG_LIST = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','
 def compose_syllable(cho, jung, jong=0):
     return chr(0xAC00 + (cho * 21 + jung) * 28 + jong)
 
+MULTI_FONT_SPECS = [
+    ("안녕하세요애플투", "Galmuri14.ttf", 14, 1, False, False),
+    ("도스타자방이야기", "neodgm.ttf", 16, 0, True, False),
+    ("三國志英雄崛起", "Sam3KRFont.ttf", 16, 0, True, False),
+    ("붓글씨고전바탕", "DOSMyungjo.ttf", 16, 0, True, False),
+    ("조밀한작은폰트", "Galmuri11.ttf", 11, 0, True, False),
+    ("초소형모니터화면", "Galmuri9.ttf", 9, 0, True, False),
+    ("漢字萬國훈민정음", "NotoSerifCJK16.ttf", 14, 0, False, True),
+]
+
 class HangulRasterizer:
-    def __init__(self, font_path=None, font_size=14):
+    def __init__(self, font_path=None, font_size=14, y_offset=0, box_center=False, force_vector=False):
         self.font_size = font_size
+        self.y_offset = y_offset
+        self.box_center = box_center
+        self.force_vector = force_vector
         self.faces = []
         self.pil_fonts = []
         self.cache = {}
         self.cache_7x16 = {}
+        self.multi_font_map = {}
+
+        if font_path is None:
+            # Setup multi-font demo mapping when no explicit font is forced
+            fonts_dir = os.path.join(SCRIPT_DIR, "fonts")
+            for chars, f_file, sz, y_off, box_c, force_vec in MULTI_FONT_SPECS:
+                fp = os.path.join(fonts_dir, f_file)
+                if os.path.exists(fp):
+                    try:
+                        sub_r = HangulRasterizer(font_path=fp, font_size=sz, y_offset=y_off, box_center=box_c, force_vector=force_vec)
+                        for c in chars:
+                            self.multi_font_map[c] = sub_r
+                    except Exception:
+                        pass
 
         font_paths = []
-        if font_path and os.path.exists(font_path):
-            font_paths.append(os.path.abspath(font_path))
+        if font_path:
+            candidate_p = [
+                font_path,
+                os.path.join(SCRIPT_DIR, "fonts", font_path),
+                os.path.join(EXE_DIR, "fonts", font_path),
+                os.path.join(SCRIPT_DIR, font_path),
+                os.path.join(EXE_DIR, font_path)
+            ]
+            for cp in candidate_p:
+                if os.path.exists(cp):
+                    font_paths.append(os.path.abspath(cp))
+                    break
+            if not font_paths:
+                print(f"[Warning] Specified font '{font_path}' not found, falling back to candidates.")
         for p in FONT_CANDIDATES:
             if os.path.exists(p):
                 abs_p = os.path.abspath(p)
@@ -183,6 +227,11 @@ class HangulRasterizer:
         if ch in self.cache:
             return self.cache[ch]
         
+        if ch in self.multi_font_map:
+            glyph = self.multi_font_map[ch].rasterize(ch)
+            self.cache[ch] = glyph
+            return glyph
+
         if ch == ' ':
             glyph = self.get_blank_glyph()
             self.cache[ch] = glyph
@@ -217,12 +266,19 @@ class HangulRasterizer:
             if target_face is None:
                 target_face = self.faces[0]
 
-            target_face.load_char(render_char, freetype.FT_LOAD_RENDER | freetype.FT_LOAD_MONOCHROME)
+            load_flags = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_MONOCHROME
+            if self.force_vector:
+                load_flags |= freetype.FT_LOAD_NO_BITMAP
+
+            target_face.load_char(render_char, load_flags)
             bitmap = target_face.glyph.bitmap
             top = target_face.glyph.bitmap_top
             
-            baseline_y = 13
-            start_y = baseline_y - top
+            if self.box_center:
+                start_y = max(0, (16 - bitmap.rows) // 2) + self.y_offset
+            else:
+                baseline_y = 13
+                start_y = baseline_y - top + self.y_offset
             start_x = max(0, (14 - bitmap.width) // 2)
             
             if bitmap.pixel_mode == freetype.FT_PIXEL_MODE_MONO:
@@ -258,7 +314,10 @@ class HangulRasterizer:
                 w = bbox[2] - bbox[0]
                 h = bbox[3] - bbox[1]
                 x_off = max(0, (14 - w) // 2) - bbox[0]
-                y_off = max(0, (16 - h) // 2) - bbox[1]
+                if self.box_center:
+                    y_off = max(0, (16 - h) // 2) - bbox[1] + self.y_offset
+                else:
+                    y_off = max(0, (16 - h) // 2) - bbox[1] + self.y_offset
                 draw.text((x_off, y_off), render_char, font=target_font, fill=1)
             
             for r in range(16):
@@ -300,12 +359,18 @@ class HangulRasterizer:
         if HAVE_FREETYPE and self.faces:
             code = ord(ch)
             target_face = self.faces[0]
-            target_face.load_char(ch, freetype.FT_LOAD_RENDER | freetype.FT_LOAD_MONOCHROME)
+            load_flags = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_MONOCHROME
+            if self.force_vector:
+                load_flags |= freetype.FT_LOAD_NO_BITMAP
+            target_face.load_char(ch, load_flags)
             bitmap = target_face.glyph.bitmap
             top = target_face.glyph.bitmap_top
             
-            baseline_y = 13
-            start_y = baseline_y - top
+            if self.box_center:
+                start_y = max(0, (16 - bitmap.rows) // 2) + self.y_offset
+            else:
+                baseline_y = 13
+                start_y = baseline_y - top + self.y_offset
             start_x = max(0, (7 - bitmap.width) // 2)
             
             if bitmap.pixel_mode == freetype.FT_PIXEL_MODE_MONO:
@@ -649,7 +714,7 @@ class HangulTerminalServer:
     MAX_COLS = 20
     MAX_ROWS = 12
 
-    def __init__(self, host="127.0.0.1", port=1977, com_port=None, font_path=None, font_size=14, use_popup=False):
+    def __init__(self, host="127.0.0.1", port=1977, com_port=None, font_path=None, font_size=14, y_offset=0, box_center=False, force_vector=False, use_popup=False):
         self.host = host
         self.port = port
         self.com_port = com_port
@@ -658,7 +723,7 @@ class HangulTerminalServer:
         self.running = False
         self.use_popup = use_popup
         
-        self.rasterizer = HangulRasterizer(font_path=font_path, font_size=font_size)
+        self.rasterizer = HangulRasterizer(font_path=font_path, font_size=font_size, y_offset=y_offset, box_center=box_center, force_vector=force_vector)
         self.automata = KoreanAutomata()
         
         self.cur_col = 0
@@ -1100,10 +1165,23 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="127.0.0.1", help="TCP Host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=1977, help="TCP Port (default: 1977)")
     parser.add_argument("--com", default=None, help="COM port (e.g. COM1) instead of TCP")
-    parser.add_argument("--font", default=None, help="Path to TTF/TTC font file (default: Gulim bitmap 14)")
+    parser.add_argument("--font", default=None, help="Path to TTF/TTC font file (default: Galmuri / Gulim / NotoSerif)")
     parser.add_argument("--size", type=int, default=14, help="Font size (default: 14)")
+    parser.add_argument("--y-offset", type=int, default=0, help="Vertical offset adjustment in pixels (default: 0, e.g. 1 for top padding)")
+    parser.add_argument("--box-center", action="store_true", help="Center glyph vertically in 16-row box instead of baseline math")
+    parser.add_argument("--force-vector", action="store_true", help="Force vector outline rasterization (ignore embedded bitmaps)")
     parser.add_argument("--popup", action="store_true", help="Use GUI popup window for Korean/Hanja input instead of console prompt")
     args = parser.parse_args()
 
-    server = HangulTerminalServer(host=args.host, port=args.port, com_port=args.com, font_path=args.font, font_size=args.size, use_popup=args.popup)
+    server = HangulTerminalServer(
+        host=args.host,
+        port=args.port,
+        com_port=args.com,
+        font_path=args.font,
+        font_size=args.size,
+        y_offset=args.y_offset,
+        box_center=args.box_center,
+        force_vector=args.force_vector,
+        use_popup=args.popup
+    )
     server.start()

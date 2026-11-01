@@ -57,6 +57,72 @@ def extract_used_characters(text):
 
     return sorted(list(chars))
 
+MULTI_FONT_SPECS = [
+    {
+        'chars': "안녕하세요애플투",
+        'font': "Galmuri14.ttf",
+        'size': 14,
+        'y_offset': 1,
+        'box_center': False,
+        'force_vector': False,
+        'label': "Galmuri14 (14px)"
+    },
+    {
+        'chars': "도스타자방이야기",
+        'font': "neodgm.ttf",
+        'size': 16,
+        'y_offset': 0,
+        'box_center': True,
+        'force_vector': False,
+        'label': "Neo둥근모 (16px)"
+    },
+    {
+        'chars': "三國志英雄崛起",
+        'font': "Sam3KRFont.ttf",
+        'size': 16,
+        'y_offset': 0,
+        'box_center': True,
+        'force_vector': False,
+        'label': "삼국지3 (16px)"
+    },
+    {
+        'chars': "붓글씨고전바탕",
+        'font': "DOSMyungjo.ttf",
+        'size': 16,
+        'y_offset': 0,
+        'box_center': True,
+        'force_vector': False,
+        'label': "도스명조 (16px)"
+    },
+    {
+        'chars': "조밀한작은폰트",
+        'font': "Galmuri11.ttf",
+        'size': 11,
+        'y_offset': 0,
+        'box_center': True,
+        'force_vector': False,
+        'label': "Galmuri11 (11px)"
+    },
+    {
+        'chars': "초소형모니터화면",
+        'font': "Galmuri9.ttf",
+        'size': 9,
+        'y_offset': 0,
+        'box_center': True,
+        'force_vector': False,
+        'label': "Galmuri9 (9px)"
+    },
+    {
+        'chars': "漢字萬國훈민정음",
+        'font': "NotoSerifCJK16.ttf",
+        'size': 14,
+        'y_offset': 0,
+        'box_center': False,
+        'force_vector': True,
+        'label': "NotoSerifCJK (14px Vector)"
+    },
+]
+
 def build_font_table(chars, rasterizer):
     """
     Builds the Apple II $6000 cache table format:
@@ -73,6 +139,26 @@ def build_font_table(chars, rasterizer):
         print(f"[경고] 사용된 글자 수({len(chars)})가 255자를 초과하여 255자로 제한합니다.")
         chars = chars[:255]
 
+    char_rasterizer_map = {}
+    fonts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+    
+    for spec in MULTI_FONT_SPECS:
+        fpath = os.path.join(fonts_dir, spec['font'])
+        if not os.path.exists(fpath):
+            fpath = spec['font']
+        try:
+            r = HangulRasterizer(
+                font_path=fpath,
+                font_size=spec['size'],
+                y_offset=spec['y_offset'],
+                box_center=spec['box_center'],
+                force_vector=spec['force_vector']
+            )
+            for c in spec['chars']:
+                char_rasterizer_map[c] = (r, spec['label'])
+        except Exception as e:
+            print(f"[Warning] Could not initialize rasterizer for {spec['label']}: {e}")
+
     buf = bytearray()
     buf.append(ord('H'))
     buf.append(ord('G'))
@@ -86,7 +172,12 @@ def build_font_table(chars, rasterizer):
         for i in range(min(3, len(utf8_bytes))):
             key[i] = utf8_bytes[i]
         
-        glyph_bytes = rasterizer.rasterize(ch)
+        if ch in char_rasterizer_map:
+            r, label = char_rasterizer_map[ch]
+            glyph_bytes = r.rasterize(ch)
+        else:
+            glyph_bytes = rasterizer.rasterize(ch)
+
         if len(glyph_bytes) != 32:
             glyph_bytes = glyph_bytes.ljust(32, b'\x00')[:32]
 
@@ -119,7 +210,7 @@ def patch_hello_program(dsk_path, custom_ac=None):
     prog_bytes = build_applesoft_program(hello_lines)
     put_file(dsk_path, "HELLO", "A", 0x0801, prog_bytes, custom_ac=custom_ac)
 
-def process_dsk(dsk_path, specific_programs=None, custom_ac=None):
+def process_dsk(dsk_path, specific_programs=None, custom_ac=None, font_path=None, y_offset=0, box_center=False, force_vector=False):
     if not os.path.exists(dsk_path):
         print(f"[오류] DSK 파일을 찾을 수 없습니다: {dsk_path}")
         return False
@@ -152,11 +243,18 @@ def process_dsk(dsk_path, specific_programs=None, custom_ac=None):
         return False
 
     print(f"\n[3/4] PC TrueType 폰트로 14x16 비트맵 글리프 래스터라이징 중...")
-    rasterizer = HangulRasterizer()
+    rasterizer = HangulRasterizer(font_path=font_path, font_size=14, y_offset=y_offset, box_center=box_center, force_vector=force_vector)
     font_bytes = build_font_table(chars_list, rasterizer)
     print(f"  * 생성된 FONT 바이너리 크기: {len(font_bytes)} 바이트 (메모리 로드 주소: $6000)")
 
     print(f"\n[4/4] DSK 이미지에 'FONT' 파일 주입 및 부팅 스크립트(HELLO) 패치 중...")
+    # Ensure HANGUL driver is the latest standalone-capable UNICODE.BIN ($4000)
+    unicode_bin = os.path.join(os.path.dirname(os.path.abspath(__file__)), "UNICODE.BIN")
+    if os.path.exists(unicode_bin):
+        with open(unicode_bin, "rb") as f:
+            ub_data = f.read()
+        put_file(dsk_path, "HANGUL", "B", 0x4000, ub_data, custom_ac=custom_ac)
+
     put_file(dsk_path, "FONT", "B", 0x6000, font_bytes, custom_ac=custom_ac)
     patch_hello_program(dsk_path, custom_ac=custom_ac)
 
@@ -179,8 +277,20 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Apple II Standalone Font Subsetter and DSK Injector")
     parser.add_argument("--dsk", default="unicode.dsk", help="Path to Apple II DSK image (default: unicode.dsk)")
     parser.add_argument("--programs", default=None, help="Comma-separated list of BASIC programs to extract fonts from (default: all)")
+    parser.add_argument("--font", default=None, help="Path to TTF/TTC font file (default: Galmuri / Gulim / NotoSerif)")
+    parser.add_argument("--y-offset", type=int, default=0, help="Vertical offset adjustment in pixels (default: 0, e.g. 1 for top padding)")
+    parser.add_argument("--box-center", action="store_true", help="Center glyph vertically in 16-row box instead of baseline math")
+    parser.add_argument("--force-vector", action="store_true", help="Force vector outline rasterization (ignore embedded bitmaps)")
     parser.add_argument("--ac-jar", default=None, help="Explicit path to AppleCommander JAR file")
     args = parser.parse_args()
 
     progs = args.programs.split(",") if args.programs else None
-    process_dsk(args.dsk, progs, custom_ac=args.ac_jar)
+    process_dsk(
+        args.dsk,
+        progs,
+        custom_ac=args.ac_jar,
+        font_path=args.font,
+        y_offset=args.y_offset,
+        box_center=args.box_center,
+        force_vector=args.force_vector
+    )

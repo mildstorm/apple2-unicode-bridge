@@ -216,8 +216,84 @@ BASIC 프롬프트 `]`에서 `&`만 입력하고 Enter를 누르면 전체화면
 
 ---
 
-## 7. 라이선스 (License)
+## 7. 지원 폰트 라이브러리 및 폰트 엔진 옵션
+
+`apple2-unicode-bridge`는 애플 II의 14×16 고해상도(HGR) 픽셀 환경에 맞춰 **벡터 외곽선 폰트**와 **레트로 비트맵/픽셀 폰트**를 모두 완벽하게 지원합니다:
+
+* **픽셀 / 비트맵 TTF (레트로 도스/고전 감성 추천)**:  
+  **갈무리(Galmuri)**, **Neo둥근모**, **삼국지3 폰트** 등 정수 픽셀 단위로 디자인된 폰트입니다. 1비트 흑백 환경에서도 획 뭉개짐이나 글자 깨짐 없이 칼같이 선명한 레트로 출력을 보여줍니다.
+* **벡터 외곽선 TTF (전 세계 범용 다국어 지원)**:  
+  **Noto Serif CJK** 등 수만 자의 한글/한자/일본어/키릴/그리스/확장 라틴 문자를 포괄하는 범용 폰트입니다.
+* **임베디드 비트맵 (`EBDT`) 자동 활용**:  
+  Windows 기본 **굴림체(`gulim.ttc`)**의 경우, 14px 구간에 내장된 1비트 흑백 비트맵을 자동으로 불러와 최상의 한글/한자 품질을 제공합니다.
+
+### 7.1 번들 폰트 목록 (`fonts/` 디렉터리)
+
+프로젝트에 포함된 모든 폰트는 상업적/비상업적으로 무료 사용 가능한 오픈소스 라이선스(SIL OFL 또는 MIT)를 따릅니다.
+
+| 폰트 파일 | 형태 | 디자인 규격 | 특징 및 권장 용도 | 라이선스 | 출처 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`Galmuri14.ttf`** | 픽셀 TTF | 14×14 | **애플 II HGR 기본 권장 폰트.** 상하 1줄 패딩(`--y-offset 1`)을 주면 14×16 격자에 가장 완벽하게 안착함. | SIL OFL 1.1 | [quiple/galmuri](https://github.com/quiple/galmuri) |
+| **`Galmuri11.ttf`** | 픽셀 TTF | 11×11 | 작은 픽셀 폰트. 조밀한 텍스트 배치나 80컬럼 모드에 적합. | SIL OFL 1.1 | [quiple/galmuri](https://github.com/quiple/galmuri) |
+| **`Galmuri9.ttf`** | 픽셀 TTF | 9×9 | 극소형 마이크로 픽셀 폰트. 상태 표시줄이나 HUD용. | SIL OFL 1.1 | [quiple/galmuri](https://github.com/quiple/galmuri) |
+| **`neodgm.ttf`** | 픽셀 TTF | 16×16 | **Neo둥근모.** 90년대 도스(한메타자, 이야기 등) 전성기 특유의 굵고 시원한 16행 꽉 찬 한글 스타일. | SIL OFL 1.1 | [neodgm/neodgm](https://github.com/neodgm/neodgm) |
+| **`Sam3KRFont.ttf`** | 픽셀 TTF | 16×16 | **삼국지3 한글 글꼴.** 코에이 고전 게임 삼국지 3 특유의 붓글씨 도트 감성 복원 폰트. | MIT License | Damheo Lee ([hurss/fonts](https://github.com/hurss/fonts)) |
+| **`DOSGothic.ttf`** | 픽셀 TTF | 16×16 | **도스고딕.** 고전 도스 고딕 고정폭 픽셀 폰트. | MIT License | Damheo Lee ([hurss/fonts](https://github.com/hurss/fonts)) |
+| **`DOSMyungjo.ttf`** | 픽셀 TTF | 16×16 | **도스명조.** 고전 도스 바탕/명조 픽셀 폰트. | MIT License | Damheo Lee ([hurss/fonts](https://github.com/hurss/fonts)) |
+| **`NotoSerifCJK16.ttf`** | 벡터 TTF | 가변 크기 | 한글/한자/가나/키릴/그리스 문자를 모두 아우르는 범용 다국어 벡터 폰트. | SIL OFL 1.1 | Google / Adobe |
+
+### 7.2 폰트 옵션 및 실행 방법
+
+`unicode_server.py`와 `build_font_dsk.py` 모두 동일한 옵션 플래그를 지원합니다:
+
+```bash
+# 1. 갈무리14 + 상단 1줄 패딩 (14x16 상하 중앙 안착)
+python unicode_server.py --font Galmuri14.ttf --y-offset 1
+
+# 2. Neo둥근모 + 상하 박스 자동 중앙 정렬
+python unicode_server.py --font neodgm.ttf --box-center
+
+# 3. 고전 삼국지3 글꼴로 독립 실행형 DSK 이미지 빌드
+python build_font_dsk.py --font Sam3KRFont.ttf --box-center
+
+# 4. 내장 비트맵을 무시하고 순수 벡터 외곽선 렌더링 강제
+python unicode_server.py --font NotoSerifCJK16.ttf --force-vector
+```
+
+### 7.3 다중 폰트 및 크기별 라인 시연: `RUN DEMO`
+
+AppleWin에서 `RUN DEMO`를 실행하면, **동일한 화면에서 7가지 서로 다른 폰트와 크기가 라인별로 각각 표시**되는 멀티 폰트 시연을 감상할 수 있습니다:
+
+| 줄 (Row) | 폰트 이름 | 크기 (Size) | 폰트 종류 | 출력 텍스트 내용 |
+| :---: | :--- | :---: | :---: | :--- |
+| **줄 1** | **`Galmuri14`** | 14 px | 픽셀 TTF | `[GALMURI14] 안녕하세요애플투` |
+| **줄 2** | **`Neo둥근모`** | 16 px | 도스 픽셀 TTF | `[NEODGM 16] 도스타자방이야기` |
+| **줄 3** | **`삼국지3글꼴`** | 16 px | 고전 한자/한글 | `[SAM3K  16] 三國志英雄崛起` |
+| **줄 4** | **`도스명조`** | 16 px | 세리프 픽셀 TTF | `[MYUNGJO16] 붓글씨고전바탕` |
+| **줄 5** | **`Galmuri11`** | 11 px | 소형 픽셀 TTF | `[GALMURI11] 조밀한작은폰트` |
+| **줄 6** | **`Galmuri9`** | 9 px | 초소형 픽셀 TTF | `[GALMURI 9] 초소형모니터화면` |
+| **줄 7** | **`NotoSerifCJK`** | 14 px | 벡터 외곽선 TTF | `[NOTOSERIF] 漢字萬國훈민정음` |
+| **줄 8** | *기본 영문* | 7×16 | ASCII | `1977 - 2026 RETRO COMPUTING` |
+
+![Multi-Font Standalone Demo](docs/images/verified_standalone_demo.png)
+
+### 7.4 전체 폰트 미리보기 및 비교 (`tools/preview_fonts.py`)
+
+번들된 모든 폰트의 글리프를 터미널 ASCII 도트 아트 및 고해상도 그래픽 이미지로 한눈에 비교할 수 있습니다:
+
+```bash
+python tools/preview_fonts.py
+# docs/images/font_comparison.png 이미지 자동 생성
+```
+
+---
+
+## 8. 라이선스 (License)
 
 - **소스 코드 및 문서**: [MIT License](LICENSE) (Copyright (c) 2026 mildstorm)
-- **번들 폰트**: `NotoSerifCJK16.ttf`는 [SIL Open Font License 1.1](https://scripts.sil.org/OFL)에 따라 배포됩니다.
+- **번들 폰트 라이선스**:
+  - `Galmuri` 시리즈 (`Galmuri14.ttf`, `Galmuri11.ttf`, `Galmuri9.ttf`): [SIL Open Font License 1.1](fonts/README.md) by quiple.
+  - `Neo둥근모` (`neodgm.ttf`): [SIL Open Font License 1.1](fonts/README.md) by Dalgona.
+  - `Sam3KRFont.ttf`, `DOSGothic.ttf`, `DOSMyungjo.ttf`: [MIT License](fonts/README.md) by Damheo Lee.
+  - `NotoSerifCJK16.ttf`: [SIL Open Font License 1.1](https://scripts.sil.org/OFL) by Google / Adobe.
 

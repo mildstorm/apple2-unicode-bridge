@@ -279,19 +279,73 @@ python verify_dsk_font.py
 
 ---
 
-## 🌐 Customizing Fonts for Any Language
+## 🔤 Font Engine: Retro Pixel Fonts & Scalable Vectors
 
-The PC server supports any TrueType (`.ttf`), OpenType (`.otf`), or TrueType Collection (`.ttc`) font. You can specify fonts for your preferred writing system (e.g., Cyrillic, Greek, Japanese, Arabic, Hebrew, or custom retro pixel fonts):
+`apple2-unicode-bridge` accommodates both **Vector Outlines** and **Pixel/Bitmap Fonts** within the low-resolution 14×16 Apple II HGR grid:
+
+* **Pixel / Bitmap TTF Fonts (Recommended for Authentic Retro Aesthetic)**:  
+  Fonts such as **Galmuri14** and **Neo둥근모** are designed on integer pixel grids. When rendered in 1-bit monochrome, they produce razor-sharp, hand-tuned retro glyphs without stroke collisions or dropped lines.
+* **Vector Outline TTF Fonts (Universal Multilingual Coverage)**:  
+  Fonts like **Noto Serif CJK** or system fonts provide complete worldwide Unicode coverage (thousands of characters across CJK, Cyrillic, Greek, Arabic, Latin).
+* **Embedded Bitmap Strikes (`EBDT` / `sbit`)**:  
+  Fonts like Windows **굴림 (`gulim.ttc`)** contain built-in 14×14 1-bit monochrome bitmaps for Hangul and Hanja, which FreeType uses automatically.
+
+### Bundled Font Library (`fonts/`)
+
+| Font File | Type | Target Grid | Characteristics | License |
+| :--- | :--- | :--- | :--- | :--- |
+| **`Galmuri14.ttf`** | Pixel TTF | 14×14 | **Recommended default for HGR.** Crisp Korean glyphs with ideal 1-line top & bottom margins in 14×16 cells (`--y-offset 1`). | SIL OFL 1.1 |
+| **`Galmuri11.ttf`** | Pixel TTF | 11×11 | Compact pixel font, ideal for dense layouts or 80-column style Apple II displays. | SIL OFL 1.1 |
+| **`Galmuri9.ttf`** | Pixel TTF | 9×9 | Ultra-compact micro pixel font for status bars and HUDs. | SIL OFL 1.1 |
+| **`neodgm.ttf`** | Pixel TTF | 16×16 | **Neo둥근모.** The legendary 1990s Korean MS-DOS aesthetic (Hanme Taja, Iyagi). Full 16-row height with thick, bold retro strokes. | SIL OFL 1.1 |
+| **`Sam3KRFont.ttf`** | Pixel TTF | 16×16 | **삼국지3 한글 글꼴.** Faithful reproduction of the classic Koei Romance of the Three Kingdoms III Hangul bitmap font. | MIT License |
+| **`DOSGothic.ttf`** | Pixel TTF | 16×16 | **도스고딕.** Classic Korean MS-DOS Gothic monospace pixel font. | MIT License |
+| **`DOSMyungjo.ttf`** | Pixel TTF | 16×16 | **도스명조.** Classic Korean MS-DOS serif (myeongjo) pixel font. | MIT License |
+| **`NotoSerifCJK16.ttf`** | Vector TTF | Scalable | Full CJK Unicode vector font covering Hangul, Hanja, Japanese Kana, Cyrillic, Greek, and Latin diacritics. | SIL OFL 1.1 |
+
+### Font Customization & Fine-Tuning CLI Flags
+
+Both `unicode_server.py` and `build_font_dsk.py` support flexible font adjustments:
 
 ```bash
-python unicode_server.py --font /path/to/your-font.ttf
+# 1. Using Galmuri14 with 1-pixel top padding (ideal 14x14 within 14x16 box)
+python unicode_server.py --font Galmuri14.ttf --y-offset 1
+
+# 2. Using Neo둥근모 with automatic vertical box-centering
+python unicode_server.py --font neodgm.ttf --box-center
+
+# 3. Using Classic Romance of the Three Kingdoms III font for standalone DSK
+python build_font_dsk.py --font Sam3KRFont.ttf --box-center
+
+# 4. Force vector outline rendering (ignore embedded bitmaps)
+python unicode_server.py --font NotoSerifCJK16.ttf --force-vector
 ```
 
-Common system fonts you can use:
-- **Korean / CJK**: `NotoSerifCJK16.ttf`, `gulim.ttc`, `malgun.ttf`
-- **Japanese**: `msgothic.ttc`, `meiryo.ttc`
-- **Simplified / Traditional Chinese**: `simsun.ttc`, `msjh.ttc`
-- **Cyrillic / Greek / Latin**: `consola.ttf`, `arial.ttf`, `DejaVuSansMono.ttf`
+### Multi-Font & Multi-Size Showcase: `RUN DEMO`
+
+When running `DEMO` on the Apple II (`RUN DEMO`), the system demonstrates its ability to display **multiple distinct fonts and sizes on the same screen, line by line**:
+
+| Line (Row) | Font Name | Pixel Size | Type | Rendered Text Preview |
+| :---: | :--- | :---: | :---: | :--- |
+| **Row 1** | **`Galmuri14`** | 14 px | 픽셀 | `[GALMURI14] 안녕하세요애플투` |
+| **Row 2** | **`Neo둥근모`** | 16 px | 도스 픽셀 | `[NEODGM 16] 도스타자방이야기` |
+| **Row 3** | **`삼국지3글꼴`** | 16 px | 고전 한자/한글 | `[SAM3K  16] 三國志英雄崛起` |
+| **Row 4** | **`도스명조`** | 16 px | 세리프 픽셀 | `[MYUNGJO16] 붓글씨고전바탕` |
+| **Row 5** | **`Galmuri11`** | 11 px | 소형 픽셀 | `[GALMURI11] 조밀한작은폰트` |
+| **Row 6** | **`Galmuri9`** | 9 px | 마이크로 픽셀 | `[GALMURI 9] 초소형모니터화면` |
+| **Row 7** | **`NotoSerifCJK`** | 14 px | 벡터 외곽선 | `[NOTOSERIF] 漢字萬國훈민정음` |
+| **Row 8** | *System* | 7×16 | ASCII | `1977 - 2026 RETRO COMPUTING` |
+
+![Multi-Font Standalone Demo](docs/images/verified_standalone_demo.png)
+
+### Previewing & Comparing Fonts (`tools/preview_fonts.py`)
+
+Run the font preview utility to render and compare all fonts side-by-side in both ASCII terminal format and as an exported high-resolution graphic comparison:
+
+```bash
+python tools/preview_fonts.py
+# Saves side-by-side comparison to docs/images/font_comparison.png
+```
 
 ---
 
@@ -309,4 +363,8 @@ Please feel free to open an issue or submit a Pull Request!
 ## 📄 License
 
 - **Source Code & Documentation**: Licensed under the [MIT License](LICENSE). Copyright (c) 2026 mildstorm.
-- **Bundled Fonts**: `NotoSerifCJK16.ttf` is licensed under the [SIL Open Font License 1.1](https://scripts.sil.org/OFL).
+- **Bundled Fonts**:
+  - `Galmuri` series (`Galmuri14.ttf`, `Galmuri11.ttf`, `Galmuri9.ttf`): [SIL Open Font License 1.1](fonts/README.md) by quiple.
+  - `Neo둥근모` (`neodgm.ttf`): [SIL Open Font License 1.1](fonts/README.md) by Dalgona.
+  - `Sam3KRFont.ttf`, `DOSGothic.ttf`, `DOSMyungjo.ttf`: [MIT License](fonts/README.md) by Damheo Lee.
+  - `NotoSerifCJK16.ttf`: [SIL Open Font License 1.1](https://scripts.sil.org/OFL) by Google / Adobe.
