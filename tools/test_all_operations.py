@@ -193,6 +193,17 @@ def test_4_multifont_and_program_font_switching():
     print("  * Program-level font tag extraction & command mapping: OK")
     print("  -> TEST 4 PASSED!")
 
+def test_5_live_applewin_emulator():
+    print("\n[TEST 5] Live AppleWin Real Emulator Execution Verification")
+    applewin_exe = r"d:\msys64\home\milds\AppleWin\Release\AppleWin.exe"
+    if not os.path.exists(applewin_exe):
+        print("  * AppleWin.exe not found at path, skipping live emulator test.")
+        return
+
+    import tools.test_applewin_live as live_test
+    live_test.main()
+    print("  -> TEST 5 PASSED!")
+
 def main():
     print("=" * 70)
     print(" Apple II Unicode Bridge: Total System Operations Test")
@@ -202,6 +213,7 @@ def main():
         test_2_dsk_baking_and_verification()
         test_3_live_tcp_server_protocol()
         test_4_multifont_and_program_font_switching()
+        test_5_live_applewin_emulator()
         print("\n" + "=" * 70)
         print(" ALL END-TO-END VERIFICATION TESTS COMPLETED SUCCESSFULLY!")
         print("=" * 70)
