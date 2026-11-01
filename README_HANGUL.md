@@ -242,21 +242,36 @@ BASIC 프롬프트 `]`에서 `&`만 입력하고 Enter를 누르면 전체화면
 | **`DOSMyungjo.ttf`** | 픽셀 TTF | 16×16 | **도스명조.** 고전 도스 바탕/명조 픽셀 폰트. | MIT License | Damheo Lee ([hurss/fonts](https://github.com/hurss/fonts)) |
 | **`NotoSerifCJK16.ttf`** | 벡터 TTF | 가변 크기 | 한글/한자/가나/키릴/그리스 문자를 모두 아우르는 범용 다국어 벡터 폰트. | SIL OFL 1.1 | Google / Adobe |
 
-### 7.2 폰트 옵션 및 실행 방법
+### 7.2 폰트 자동 감지 및 수동 설정 옵션
 
-`unicode_server.py`와 `build_font_dsk.py` 모두 동일한 옵션 플래그를 지원합니다:
+`unicode_server.py`와 `build_font_dsk.py`는 **스마트 자동 감지 기능**과 **세부 수동 변경 옵션**을 모두 지원합니다:
 
+#### 1. 제로 설정 모드 (자동 감지)
+`--size`, `--y-offset`, `--box-center` 옵션을 생략하면 각 폰트의 고유 규격과 상하 여백을 시스템이 자동으로 판별하여 최적의 형태로 출력합니다:
 ```bash
-# 1. 갈무리14 + 상단 1줄 패딩 (14x16 상하 중앙 안착)
-python unicode_server.py --font Galmuri14.ttf --y-offset 1
+# 갈무리14의 고유 규격(14px)과 상단 1줄 패딩이 자동 적용됩니다.
+python unicode_server.py --font Galmuri14.ttf
 
-# 2. Neo둥근모 + 상하 박스 자동 중앙 정렬
-python unicode_server.py --font neodgm.ttf --box-center
+# Neo둥근모(16px), 삼국지3(16px), 도스명조(16px)의 고유 규격과 중앙 정렬이 자동 적용됩니다.
+python unicode_server.py --font neodgm.ttf
+python unicode_server.py --font Sam3KRFont.ttf
 
-# 3. 고전 삼국지3 글꼴로 독립 실행형 DSK 이미지 빌드
-python build_font_dsk.py --font Sam3KRFont.ttf --box-center
+# 갈무리11(11px), 갈무리9(9px)의 소형 크기와 수직 중앙 정렬이 자동 적용됩니다.
+python unicode_server.py --font Galmuri11.ttf
+```
 
-# 4. 내장 비트맵을 무시하고 순수 벡터 외곽선 렌더링 강제
+#### 2. 사용자 수동 변경 (옵션 오버라이드)
+사용자가 직접 크기나 여백을 변경하고 싶을 때는 옵션을 명시하면 자동 감지를 덮어쓰고 지정한 값대로 동작합니다:
+```bash
+# 폰트 크기를 강제로 변경할 때 (예: Neo둥근모를 14px로 축소, 또는 NotoSerif를 16px로 확대)
+python unicode_server.py --font neodgm.ttf --size 14
+python unicode_server.py --font NotoSerifCJK16.ttf --size 16
+
+# 글자 위치를 아래로 2픽셀 더 내리고 싶을 때
+python unicode_server.py --font Galmuri14.ttf --y-offset 2
+
+# 수직 중앙 정렬 강제 적용 또는 순수 벡터 렌더링 강제
+python unicode_server.py --font Galmuri14.ttf --box-center
 python unicode_server.py --font NotoSerifCJK16.ttf --force-vector
 ```
 

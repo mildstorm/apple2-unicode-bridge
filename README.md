@@ -303,21 +303,35 @@ python verify_dsk_font.py
 | **`DOSMyungjo.ttf`** | Pixel TTF | 16×16 | **도스명조.** Classic Korean MS-DOS serif (myeongjo) pixel font. | MIT License |
 | **`NotoSerifCJK16.ttf`** | Vector TTF | Scalable | Full CJK Unicode vector font covering Hangul, Hanja, Japanese Kana, Cyrillic, Greek, and Latin diacritics. | SIL OFL 1.1 |
 
-### Font Customization & Fine-Tuning CLI Flags
+### Font Customization, Auto-Detection & Manual Overrides
 
-Both `unicode_server.py` and `build_font_dsk.py` support flexible font adjustments:
+Both `unicode_server.py` and `build_font_dsk.py` feature **smart auto-detection** alongside full manual override flags:
 
+#### 1. Zero-Configuration Mode (Automatic Detection)
+When you omit `--size`, `--y-offset`, or `--box-center`, the engine automatically detects the font's native pixel grid and applies optimal padding:
 ```bash
-# 1. Using Galmuri14 with 1-pixel top padding (ideal 14x14 within 14x16 box)
-python unicode_server.py --font Galmuri14.ttf --y-offset 1
+# Auto-detects 14px with 1-line top margin (ideal for 14x14 in 14x16 cell)
+python unicode_server.py --font Galmuri14.ttf
 
-# 2. Using Neo둥근모 with automatic vertical box-centering
-python unicode_server.py --font neodgm.ttf --box-center
+# Auto-detects 16px native height and centers vertically
+python unicode_server.py --font neodgm.ttf
 
-# 3. Using Classic Romance of the Three Kingdoms III font for standalone DSK
-python build_font_dsk.py --font Sam3KRFont.ttf --box-center
+# Auto-detects 11px / 9px native size and centers vertically
+python unicode_server.py --font Galmuri11.ttf
+```
 
-# 4. Force vector outline rendering (ignore embedded bitmaps)
+#### 2. Manual Override Examples
+You can explicitly override any parameter whenever desired:
+```bash
+# Force custom size (e.g., scale Neo둥근모 down to 14px, or scale NotoSerif to 16px)
+python unicode_server.py --font neodgm.ttf --size 14
+python unicode_server.py --font NotoSerifCJK16.ttf --size 16
+
+# Custom vertical shift (e.g., push glyph down by 2 pixels)
+python unicode_server.py --font Galmuri14.ttf --y-offset 2
+
+# Force box-centering or force pure vector outline rasterization
+python unicode_server.py --font Galmuri14.ttf --box-center
 python unicode_server.py --font NotoSerifCJK16.ttf --force-vector
 ```
 
