@@ -27,10 +27,10 @@ if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
 from ac_tool import list_dsk_files, export_text_file, put_file, find_applecommander
 
 try:
-    from unicode_server import HangulRasterizer
+    from unicode_server import HangulRasterizer, get_font_rasterizer, parse_font_segments
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from unicode_server import HangulRasterizer
+    from unicode_server import HangulRasterizer, get_font_rasterizer, parse_font_segments
 
 def extract_used_characters(text):
     """
@@ -56,6 +56,49 @@ def extract_used_characters(text):
             chars.add(ch)
 
     return sorted(list(chars))
+
+def extract_font_tagged_characters(text, default_font=None):
+    """
+    Finds all unique Korean and Hanja characters in the text,
+    including \\K...\\N hex encoded strings and direct UTF-8 characters,
+    while tracking which font was specified via inline tags ([F:...], \\F...\\)
+    or & "/font ..." commands.
+    """
+    expanded = []
+    i = 0
+    while i < len(text):
+        if text[i:i+2].upper() == r'\K':
+            end = text.upper().find(r'\N', i + 2)
+            if end != -1:
+                hex_data = text[i+2:end]
+                try:
+                    expanded.append(bytes.fromhex(hex_data).decode('utf-8', errors='ignore'))
+                    i = end + 2
+                    continue
+                except Exception:
+                    pass
+        expanded.append(text[i])
+        i += 1
+    expanded_text = "".join(expanded)
+
+    char_font_map = {}
+    current_default = default_font
+
+    for line in expanded_text.splitlines():
+        trimmed = line.strip()
+        if '&' in trimmed and ('/font ' in trimmed.lower() or '/f ' in trimmed.lower()):
+            m = re.search(r'/(?:font|f)\s+([A-Za-z0-9_.\-]+)', trimmed, re.IGNORECASE)
+            if m:
+                current_default = m.group(1).strip()
+
+        segments = parse_font_segments(line)
+        for font_ident, seg in segments:
+            chosen_font = font_ident or current_default
+            for ch in seg:
+                if ord(ch) > 127:
+                    char_font_map[ch] = chosen_font
+
+    return char_font_map
 
 MULTI_FONT_SPECS = [
     {
@@ -123,7 +166,7 @@ MULTI_FONT_SPECS = [
     },
 ]
 
-def build_font_table(chars, rasterizer):
+def build_font_table(chars, rasterizer, char_font_map=None):
     """
     Builds the Apple II $6000 cache table format:
     Offset 0: 'H' ($48)
@@ -157,7 +200,7 @@ def build_font_table(chars, rasterizer):
             for c in spec['chars']:
                 char_rasterizer_map[c] = (r, spec['label'])
         except Exception as e:
-            print(f"[Warning] Could not initialize rasterizer for {spec['label']}: {e}")
+            pass
 
     buf = bytearray()
     buf.append(ord('H'))
@@ -172,11 +215,15 @@ def build_font_table(chars, rasterizer):
         for i in range(min(3, len(utf8_bytes))):
             key[i] = utf8_bytes[i]
         
-        if ch in char_rasterizer_map:
-            r, label = char_rasterizer_map[ch]
-            glyph_bytes = r.rasterize(ch)
+        target_r = None
+        if char_font_map and ch in char_font_map and char_font_map[ch]:
+            target_r = get_font_rasterizer(char_font_map[ch], rasterizer)
+        elif ch in char_rasterizer_map:
+            target_r, _ = char_rasterizer_map[ch]
         else:
-            glyph_bytes = rasterizer.rasterize(ch)
+            target_r = rasterizer
+
+        glyph_bytes = target_r.rasterize(ch)
 
         if len(glyph_bytes) != 32:
             glyph_bytes = glyph_bytes.ljust(32, b'\x00')[:32]
@@ -226,15 +273,16 @@ def process_dsk(dsk_path, specific_programs=None, custom_ac=None, font_path=None
 
     print(f"  * 대상 BASIC 프로그램: {', '.join(target_programs)}")
 
-    all_chars = set()
+    all_chars_map = {}
     for prog in target_programs:
         content = export_text_file(dsk_path, prog, custom_ac=custom_ac)
-        chars = extract_used_characters(content)
-        if chars:
-            print(f"  - '{prog}': {len(chars)}글자 발견 -> {''.join(chars[:15])}{'...' if len(chars) > 15 else ''}")
-            all_chars.update(chars)
+        prog_char_map = extract_font_tagged_characters(content, default_font=font_path)
+        if prog_char_map:
+            chars_found = list(prog_char_map.keys())
+            print(f"  - '{prog}': {len(chars_found)}글자 발견 -> {''.join(chars_found[:15])}{'...' if len(chars_found) > 15 else ''}")
+            all_chars_map.update(prog_char_map)
 
-    chars_list = sorted(list(all_chars))
+    chars_list = sorted(list(all_chars_map.keys()))
     print(f"\n[2/4] 총 {len(chars_list)}개의 고유 한글/漢字 글리프 추출 완료:")
     print(f"  글자 목록: {''.join(chars_list)}")
 
@@ -244,7 +292,7 @@ def process_dsk(dsk_path, specific_programs=None, custom_ac=None, font_path=None
 
     print(f"\n[3/4] PC TrueType 폰트로 14x16 비트맵 글리프 래스터라이징 중...")
     rasterizer = HangulRasterizer(font_path=font_path, font_size=size, y_offset=y_offset, box_center=box_center, force_vector=force_vector)
-    font_bytes = build_font_table(chars_list, rasterizer)
+    font_bytes = build_font_table(chars_list, rasterizer, char_font_map=all_chars_map)
     print(f"  * 생성된 FONT 바이너리 크기: {len(font_bytes)} 바이트 (메모리 로드 주소: $6000)")
 
     print(f"\n[4/4] DSK 이미지에 'FONT' 파일 주입 및 부팅 스크립트(HELLO) 패치 중...")

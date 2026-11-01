@@ -16,13 +16,13 @@ from ac_tool import put_file
 
 DEMO_LINES_DATA = [
     (10, 'REM MULTI-FONT & MULTI-SIZE DEMO'),
-    (20, '[GALMURI14] ', '안녕하세요애플투'),
-    (30, '[NEODGM 16] ', '도스타자방이야기'),
-    (40, '[SAM3K  16] ', '三國志英雄崛起'),
-    (50, '[MYUNGJO16] ', '붓글씨고전바탕'),
-    (60, '[GALMURI11] ', '조밀한작은폰트'),
-    (70, '[GALMURI 9] ', '초소형모니터화면'),
-    (80, '[NOTOSERIF] ', '漢字萬國훈민정음'),
+    (20, '[F:galmuri14]', '안녕하세요애플투'),
+    (30, '[F:neodgm]', '도스타자방이야기'),
+    (40, '[F:sam3k]', '三國志英雄崛起'),
+    (50, '[F:dosmyungjo]', '붓글씨고전바탕'),
+    (60, '[F:galmuri11]', '조밀한작은폰트'),
+    (70, '[F:galmuri9]', '초소형모니터화면'),
+    (80, '[F:noto]', '漢字萬國훈민정음'),
     (90, '& "1977 - 2026 RETRO COMPUTING"'),
     (100, 'END'),
 ]

@@ -9,6 +9,7 @@ using TrueType/OpenType fonts and streams 14x16 (and 7x16) bitmaps to Apple II H
 
 import sys
 import os
+import re
 import socket
 import threading
 import time
@@ -144,6 +145,109 @@ MULTI_FONT_SPECS = [
     ("漢字萬國훈민정음", "NotoSerifCJK16.ttf", 14, 0, False, True),
 ]
 
+BUNDLED_FONT_INFO = {
+    'galmuri14': {'file': 'Galmuri14.ttf', 'size': 14, 'y_offset': 1, 'box_center': False, 'force_vector': False, 'aliases': ['galmuri14', 'galmuri', '1']},
+    'neodgm': {'file': 'neodgm.ttf', 'size': 16, 'y_offset': 0, 'box_center': True, 'force_vector': False, 'aliases': ['neodgm', '둥근모', 'dunggeunmo', '2']},
+    'sam3k': {'file': 'Sam3KRFont.ttf', 'size': 16, 'y_offset': 0, 'box_center': True, 'force_vector': False, 'aliases': ['sam3k', 'sam3kr', '삼국지', 'samgukji', '3']},
+    'dosmyungjo': {'file': 'DOSMyungjo.ttf', 'size': 16, 'y_offset': 0, 'box_center': True, 'force_vector': False, 'aliases': ['dosmyungjo', 'myungjo', '명조', '4']},
+    'dosgothic': {'file': 'DOSGothic.ttf', 'size': 16, 'y_offset': 0, 'box_center': True, 'force_vector': False, 'aliases': ['dosgothic', 'gothic', '고딕', '5']},
+    'galmuri11': {'file': 'Galmuri11.ttf', 'size': 11, 'y_offset': 0, 'box_center': True, 'force_vector': False, 'aliases': ['galmuri11', '6']},
+    'galmuri9': {'file': 'Galmuri9.ttf', 'size': 9, 'y_offset': 0, 'box_center': True, 'force_vector': False, 'aliases': ['galmuri9', '7']},
+    'notoserif': {'file': 'NotoSerifCJK16.ttf', 'size': 14, 'y_offset': 0, 'box_center': False, 'force_vector': True, 'aliases': ['notoserif', 'noto', 'cjk', '8']},
+}
+
+FONT_TAG_PATTERN = re.compile(r'\[(?:F|FONT):([^\]]+)\]|\\(?:F|f):?([^\\/]+)\\')
+
+def parse_font_segments(text):
+    """
+    Parses a string into segments of (font_identifier_or_None, text_segment).
+    Recognizes tags like [F:neodgm], [FONT:1], \\F:myungjo\\, \\F2\\ etc.
+    """
+    segments = []
+    last_idx = 0
+    cur_font = None
+    for m in FONT_TAG_PATTERN.finditer(text):
+        seg = text[last_idx:m.start()]
+        if seg:
+            segments.append((cur_font, seg))
+        cur_font = (m.group(1) or m.group(2)).strip()
+        last_idx = m.end()
+    seg = text[last_idx:]
+    if seg:
+        segments.append((cur_font, seg))
+    return segments
+
+_RASTERIZER_CACHE = {}
+
+def get_font_rasterizer(font_identifier, fallback_rasterizer=None):
+    """
+    Resolves a font identifier (alias, index, filename, or path) to a HangulRasterizer.
+    """
+    if not font_identifier:
+        return fallback_rasterizer
+
+    key = str(font_identifier).strip().lower()
+    if key in _RASTERIZER_CACHE:
+        return _RASTERIZER_CACHE[key]
+
+    fonts_dir = os.path.join(SCRIPT_DIR, "fonts")
+    if not os.path.exists(fonts_dir):
+        fonts_dir = os.path.join(os.path.dirname(SCRIPT_DIR), "fonts")
+
+    # 1. Match aliases in BUNDLED_FONT_INFO
+    target_spec = None
+    for spec in BUNDLED_FONT_INFO.values():
+        all_aliases = [a.lower() for a in spec['aliases']] + [
+            spec['file'].lower(),
+            os.path.splitext(spec['file'].lower())[0]
+        ]
+        if key in all_aliases:
+            target_spec = spec
+            break
+
+    if target_spec:
+        fpath = os.path.join(fonts_dir, target_spec['file'])
+        if not os.path.exists(fpath):
+            fpath = os.path.join(SCRIPT_DIR, target_spec['file'])
+        try:
+            r = HangulRasterizer(
+                font_path=fpath,
+                font_size=target_spec['size'],
+                y_offset=target_spec['y_offset'],
+                box_center=target_spec['box_center'],
+                force_vector=target_spec['force_vector']
+            )
+            _RASTERIZER_CACHE[key] = r
+            return r
+        except Exception as e:
+            print(f"[Warning] Failed to instantiate rasterizer for {key}: {e}")
+
+    # 2. Match direct file or path
+    candidate_paths = [
+        font_identifier,
+        os.path.join(fonts_dir, font_identifier),
+        os.path.join(SCRIPT_DIR, font_identifier),
+        os.path.join(fonts_dir, font_identifier + ".ttf"),
+        os.path.join(SCRIPT_DIR, font_identifier + ".ttf"),
+    ]
+    for cp in candidate_paths:
+        if os.path.exists(cp):
+            try:
+                auto_sz, auto_y, auto_c = auto_detect_font_config(cp)
+                r = HangulRasterizer(
+                    font_path=cp,
+                    font_size=auto_sz,
+                    y_offset=auto_y,
+                    box_center=auto_c,
+                    force_vector=False
+                )
+                _RASTERIZER_CACHE[key] = r
+                return r
+            except Exception as e:
+                print(f"[Warning] Failed to load font from {cp}: {e}")
+
+    return fallback_rasterizer
+
 def auto_detect_font_config(font_path):
     """Automatically detects native pixel size and vertical alignment for bitmap fonts."""
     if not font_path:
@@ -191,19 +295,25 @@ class HangulRasterizer:
 
         font_paths = []
         if font_path:
-            candidate_p = [
-                font_path,
-                os.path.join(SCRIPT_DIR, "fonts", font_path),
-                os.path.join(EXE_DIR, "fonts", font_path),
-                os.path.join(SCRIPT_DIR, font_path),
-                os.path.join(EXE_DIR, font_path)
-            ]
-            for cp in candidate_p:
-                if os.path.exists(cp):
-                    font_paths.append(os.path.abspath(cp))
-                    break
-            if not font_paths:
-                print(f"[Warning] Specified font '{font_path}' not found, falling back to candidates.")
+            raw_entries = [p.strip() for p in font_path.split(",") if p.strip()]
+            for item in raw_entries:
+                candidate_p = [
+                    item,
+                    os.path.join(SCRIPT_DIR, "fonts", item),
+                    os.path.join(EXE_DIR, "fonts", item),
+                    os.path.join(SCRIPT_DIR, item),
+                    os.path.join(EXE_DIR, item)
+                ]
+                found = False
+                for cp in candidate_p:
+                    if os.path.exists(cp):
+                        abs_p = os.path.abspath(cp)
+                        if abs_p not in font_paths:
+                            font_paths.append(abs_p)
+                        found = True
+                        break
+                if not found:
+                    print(f"[Warning] Specified font '{item}' not found, skipping.")
         for p in FONT_CANDIDATES:
             if os.path.exists(p):
                 abs_p = os.path.abspath(p)
@@ -217,7 +327,9 @@ class HangulRasterizer:
             for p in font_paths:
                 try:
                     f = freetype.Face(p)
-                    f.set_pixel_sizes(0, self.font_size)
+                    auto_sz, _, _ = auto_detect_font_config(p)
+                    eff_sz = self.font_size if font_size is not None else auto_sz
+                    f.set_pixel_sizes(0, eff_sz)
                     self.faces.append(f)
                     print(f"[Font-FreeType] Loaded: {p}")
                 except Exception:
@@ -744,6 +856,8 @@ class HangulTerminalServer:
         self.use_popup = use_popup
         
         self.rasterizer = HangulRasterizer(font_path=font_path, font_size=font_size, y_offset=y_offset, box_center=box_center, force_vector=force_vector)
+        self.default_rasterizer = self.rasterizer
+        self.current_rasterizer = self.rasterizer
         self.automata = KoreanAutomata()
         
         self.cur_col = 0
@@ -960,7 +1074,7 @@ class HangulTerminalServer:
             try:
                 s = self.utf8_buf.decode('utf-8')
                 self.utf8_buf.clear()
-                glyph = self.rasterizer.rasterize(s) # 32 bytes 14x16
+                glyph = self.current_rasterizer.rasterize(s) # 32 bytes 14x16
                 if self.cur_col > 38:
                     self.cur_col = 0
                     if self.cur_row < self.MAX_ROWS - 1:
@@ -1056,16 +1170,32 @@ class HangulTerminalServer:
                         self.send_raw(bytes([0x00]))
                         continue
 
+                    # Dedicated command: & "/font <name>" or & "/f <name>"
+                    stripped_cmd = text.strip()
+                    if stripped_cmd.lower().startswith(("/font ", "/f ")):
+                        parts = stripped_cmd.split(maxsplit=1)
+                        if len(parts) > 1:
+                            target_f = parts[1].strip()
+                            new_r = get_font_rasterizer(target_f, self.default_rasterizer)
+                            if new_r:
+                                self.current_rasterizer = new_r
+                                print(f"[System] Active font switched to: {target_f}")
+                        self.send_raw(bytes([0x00]))
+                        continue
+
                     if self.cur_col == 0 and self.cur_row == 0:
                         self.clear_screen()
 
-                    for ch in text:
-                        if ch == '\n' or ch == '\r':
-                            self.newline()
-                            continue
-                        glyph = self.rasterizer.rasterize(ch)
-                        self.draw_glyph_at(self.cur_col, self.cur_row, glyph)
-                        self.advance_cursor()
+                    segments = parse_font_segments(text)
+                    for font_tag, seg_text in segments:
+                        active_r = get_font_rasterizer(font_tag, self.current_rasterizer) if font_tag else self.current_rasterizer
+                        for ch in seg_text:
+                            if ch == '\n' or ch == '\r':
+                                self.newline()
+                                continue
+                            glyph = active_r.rasterize(ch)
+                            self.draw_glyph_at(self.cur_col, self.cur_row, glyph)
+                            self.advance_cursor()
                     self.newline()
                     self.send_raw(bytes([0x00])) # Send CMD_DONE
                     continue

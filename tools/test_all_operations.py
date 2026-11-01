@@ -143,6 +143,56 @@ def test_3_live_tcp_server_protocol():
         server.sock.close()
     print("  -> TEST 3 PASSED!")
 
+def test_4_multifont_and_program_font_switching():
+    print("\n[TEST 4] Multi-Font Fallback Chaining & Program-Level Font Switching")
+    from unicode_server import parse_font_segments, get_font_rasterizer, HangulRasterizer
+    from build_font_dsk import extract_font_tagged_characters
+
+    # 1. Inline Font Tags Parsing
+    sample_text = "[F:neodgm]도스타자방 [F:myungjo]명조체 [F:3]삼국지 \\F:noto\\漢字"
+    segs = parse_font_segments(sample_text)
+    print(f"  * Parsed Segments: {segs}")
+    assert len(segs) == 4
+    assert segs[0] == ('neodgm', '도스타자방 ')
+    assert segs[1] == ('myungjo', '명조체 ')
+    assert segs[2] == ('3', '삼국지 ')
+    assert segs[3] == ('noto', '漢字')
+    print("  * Inline font tag parsing: OK")
+
+    # 2. Dynamic Font Rasterizer Retrieval by Alias / Index
+    r_neo = get_font_rasterizer("neodgm")
+    assert r_neo is not None
+    assert len(r_neo.rasterize("도")) == 32
+    print("  * 'neodgm' alias rasterizer: OK")
+
+    r_myungjo = get_font_rasterizer("myungjo")
+    assert r_myungjo is not None
+    assert len(r_myungjo.rasterize("명")) == 32
+    print("  * 'myungjo' alias rasterizer: OK")
+
+    # 3. Multi-Font Fallback Chaining
+    chain_r = HangulRasterizer(font_path="Galmuri14.ttf, Sam3KRFont.ttf, NotoSerifCJK16.ttf")
+    assert len(chain_r.faces) >= 3, "Failed to load multi-font chain faces!"
+    g_han = chain_r.rasterize("한")
+    g_hanja = chain_r.rasterize("國")
+    assert len(g_han) == 32 and len(g_hanja) == 32
+    print("  * Comma-separated font fallback chaining: OK")
+
+    # 4. BASIC Program Font Extraction
+    basic_code = """
+    10 REM TEST PROGRAM
+    20 & "[F:neodgm]도스타자"
+    30 & "/font dosmyungjo"
+    40 & "명조체본문"
+    """
+    char_map = extract_font_tagged_characters(basic_code)
+    assert char_map['도'] == 'neodgm'
+    assert char_map['타'] == 'neodgm'
+    assert char_map['명'] == 'dosmyungjo'
+    assert char_map['본'] == 'dosmyungjo'
+    print("  * Program-level font tag extraction & command mapping: OK")
+    print("  -> TEST 4 PASSED!")
+
 def main():
     print("=" * 70)
     print(" Apple II Unicode Bridge: Total System Operations Test")
@@ -151,6 +201,7 @@ def main():
         test_1_font_loading()
         test_2_dsk_baking_and_verification()
         test_3_live_tcp_server_protocol()
+        test_4_multifont_and_program_font_switching()
         print("\n" + "=" * 70)
         print(" ALL END-TO-END VERIFICATION TESTS COMPLETED SUCCESSFULLY!")
         print("=" * 70)

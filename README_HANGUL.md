@@ -275,7 +275,68 @@ python unicode_server.py --font Galmuri14.ttf --box-center
 python unicode_server.py --font NotoSerifCJK16.ttf --force-vector
 ```
 
-### 7.3 다중 폰트 및 크기별 라인 시연: `RUN DEMO`
+### 7.3 복수개의 TTF 폰트 지정 및 자동 폴백 (Multi-Font Fallback Chaining)
+
+서로 다른 장점을 가진 복수개의 TTF 폰트를 쉼표(`,`)로 구분하여 체인 형태로 동시에 지정할 수 있습니다:
+
+```bash
+# 기본 한글은 Galmuri14, 특수 한자는 Sam3KRFont, 희귀 한자/유니코드는 NotoSerif로 자동 검색
+python unicode_server.py --font "Galmuri14.ttf, Sam3KRFont.ttf, NotoSerifCJK16.ttf"
+
+# 독립형 DSK 빌드 시에도 복수 폰트 폴백 체인 지정 가능
+python build_font_dsk.py --font "Galmuri14.ttf, neodgm.ttf, Sam3KRFont.ttf"
+```
+
+* **동작 원리 (Fallback Chain)**:
+  1. 첫 번째 폰트에 요청한 글자의 글리프가 있는지 검색합니다.
+  2. 첫 번째 폰트에 없는 한자/기호인 경우 두 번째 폰트를 검색하고, 그래도 없으면 세 번째 폰트를 검색합니다.
+  3. 이를 통해 한글 픽셀 폰트의 선명함과 대용량 CJK 폰트의 폭넓은 한자 지원을 동시에 누릴 수 있습니다.
+  4. 지정된 순서대로 폰트 번호(`1`, `2`, `3`...) 및 파일명 별칭이 자동으로 등록됩니다.
+
+### 7.4 프로그램에서 원하는 폰트 직접 지정 및 전환 (Program-Level Font Switching)
+
+Applesoft BASIC 프로그램 소스 코드 내에서 원하는 폰트를 실시간으로 지정하여 글자별/라인별로 다른 폰트로 출력할 수 있습니다.
+
+#### 방법 1. 인라인 폰트 태그 (Inline Font Tags)
+문자열 안에서 원하는 위치에 폰트 태그를 넣어 글꼴을 즉시 전환합니다:
+```basic
+10 & "[F:neodgm]도스타자방 [F:myungjo]명조체출력"
+20 & "[F:sam3k]三國志英雄 [F:galmuri14]애플투한글"
+30 & "[F:1]첫번째폰트 [F:2]두번째폰트 [F:3]세번째폰트"
+```
+* **이스케이프 방식(`\F...\`)도 지원**:
+  `10 & "\F:neodgm\도스 타자 \F:myungjo\명조체"`
+  `20 & "\F1\갈무리14 \F2\Neo둥근모 \F3\삼국지3"`
+* 태그는 화면에 출력되지 않고 폰트만 전환된 후 내용만 화면에 표시됩니다.
+
+#### 방법 2. 독립 제어 명령 (`/font <이름 또는 번호>`)
+이후 출력되는 모든 텍스트의 기본 폰트를 한 번에 변경합니다:
+```basic
+10 & "/font neodgm"
+20 & "이제부터 나오는 모든 글은 둥근모 폰트로 출력됩니다"
+30 & "두 번째 줄도 둥근모로 유지됩니다"
+40 & "/font myungjo"
+50 & "이 줄부터는 도스명조체로 변경되어 출력됩니다"
+```
+
+#### 사전 등록된 번들 폰트 별칭 (Aliases)
+
+| 별칭 (Alias) | 번호 | 실제 폰트 파일 | 스타일 |
+| :--- | :---: | :--- | :--- |
+| `galmuri14`, `galmuri`, `1` | 1 | `Galmuri14.ttf` | 14px 갈무리 (권장 기본) |
+| `neodgm`, `둥근모`, `dunggeunmo`, `2` | 2 | `neodgm.ttf` | 16px Neo둥근모 (도스타자) |
+| `sam3k`, `sam3kr`, `삼국지`, `3` | 3 | `Sam3KRFont.ttf` | 16px 삼국지3 한자/한글 |
+| `myungjo`, `dosmyungjo`, `명조`, `4` | 4 | `DOSMyungjo.ttf` | 16px 도스명조 |
+| `gothic`, `dosgothic`, `고딕`, `5` | 5 | `DOSGothic.ttf` | 16px 도스고딕 |
+| `galmuri11`, `6` | 6 | `Galmuri11.ttf` | 11px 갈무리 컴팩트 |
+| `galmuri9`, `7` | 7 | `Galmuri9.ttf` | 9px 갈무리 마이크로 |
+| `noto`, `notoserif`, `cjk`, `8` | 8 | `NotoSerifCJK16.ttf` | 14px NotoSerif 벡터 |
+
+> [!TIP]
+> **PC 서버 스트리밍 모드**와 **독립형 플로피 DSK 오프라인 모드** 모두 동일한 태그 문법이 작동합니다!  
+> `build_font_dsk.py`가 디스크 내 BASIC 프로그램을 파싱할 때 `[F:neodgm]` 등의 태그를 인식하여 각 문자별로 지정된 폰트의 글리프를 `$6000` 캐시 테이블에 구워 넣으므로, PC 연결 없이도 완벽하게 동작합니다.
+
+### 7.5 다중 폰트 및 크기별 라인 시연: `RUN DEMO`
 
 AppleWin에서 `RUN DEMO`를 실행하면, **동일한 화면에서 7가지 서로 다른 폰트와 크기가 라인별로 각각 표시**되는 멀티 폰트 시연을 감상할 수 있습니다:
 
@@ -292,7 +353,7 @@ AppleWin에서 `RUN DEMO`를 실행하면, **동일한 화면에서 7가지 서�
 
 ![Multi-Font Standalone Demo](docs/images/verified_standalone_demo.png)
 
-### 7.4 전체 폰트 미리보기 및 비교 (`tools/preview_fonts.py`)
+### 7.6 전체 폰트 미리보기 및 비교 (`tools/preview_fonts.py`)
 
 번들된 모든 폰트의 글리프를 터미널 ASCII 도트 아트 및 고해상도 그래픽 이미지로 한눈에 비교할 수 있습니다:
 

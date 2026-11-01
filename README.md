@@ -335,6 +335,42 @@ python unicode_server.py --font Galmuri14.ttf --box-center
 python unicode_server.py --font NotoSerifCJK16.ttf --force-vector
 ```
 
+#### 3. Multi-Font Fallback Chaining
+You can supply a comma-separated list of TTF fonts to create an automatic glyph fallback chain:
+```bash
+# Prioritize Galmuri14 for clean Hangul, Sam3KRFont for retro Hanja, and NotoSerif for universal Unicode
+python unicode_server.py --font "Galmuri14.ttf, Sam3KRFont.ttf, NotoSerifCJK16.ttf"
+
+# Also supported during offline DSK font subsetting:
+python build_font_dsk.py --font "Galmuri14.ttf, neodgm.ttf, Sam3KRFont.ttf"
+```
+When rendering a character, the engine searches the faces in order: if a glyph is missing in the primary font, it seamlessly falls back to the secondary and tertiary fonts.
+
+#### 4. Program-Level Font Switching & Inline Tags
+You can directly select or switch fonts within your Applesoft BASIC programs without restarting the server or driver:
+
+* **Inline Font Tags (`[F:name]` or `\F:name\`)**:
+  Switch fonts on the fly anywhere inside a string:
+  ```basic
+  10 & "[F:neodgm]도스타자방 [F:myungjo]명조체출력"
+  20 & "[F:sam3k]三國志英雄 [F:galmuri14]애플투한글"
+  30 & "[F:1]첫번째폰트 [F:2]두번째폰트 [F:3]세번째폰트"
+  ```
+  *(Escape-style `\F:neodgm\...` and `\F1\...` are also supported).*
+* **Dedicated Control Command (`& "/font <name>"`)**:
+  Changes the default font for all subsequent print statements:
+  ```basic
+  10 & "/font neodgm"
+  20 & "ALL SUBSEQUENT LINES WILL RENDER IN NEODGM"
+  30 & "/font myungjo"
+  40 & "THIS LINE SWITCHES TO DOS MYEONGJO"
+  ```
+* **Pre-Registered Font Aliases**:
+  `galmuri14` (1), `neodgm` (2), `sam3k` (3), `myungjo` (4), `gothic` (5), `galmuri11` (6), `galmuri9` (7), `noto` (8).
+
+> [!TIP]
+> Both the **PC Font Server streaming mode** and the **Standalone Floppy DSK offline mode** support this exact same syntax! When baking a DSK with `build_font_dsk.py`, the builder inspects program tags and pre-renders each glyph with its designated font into the `$6000` cache.
+
 ### Multi-Font & Multi-Size Showcase: `RUN DEMO`
 
 When running `DEMO` on the Apple II (`RUN DEMO`), the system demonstrates its ability to display **multiple distinct fonts and sizes on the same screen, line by line**:
