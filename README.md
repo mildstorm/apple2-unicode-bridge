@@ -367,6 +367,18 @@ You can directly select or switch fonts within your Applesoft BASIC programs wit
   ```
 * **Pre-Registered Font Aliases**:
   `galmuri14` (1), `neodgm` (2), `sam3k` (3), `myungjo` (4), `gothic` (5), `galmuri11` (6), `galmuri9` (7), `noto` (8).
+* **Arbitrary Font Number & Alias Customization**:
+  You can remap any number or define custom aliases via CLI or dynamically inside BASIC:
+  ```bash
+  # CLI: Map custom numbers and names to specific fonts
+  python unicode_server.py --font "1=DOSMyungjo.ttf, 2=neodgm.ttf, title=Sam3KRFont.ttf, body=Galmuri14.ttf"
+  ```
+  ```basic
+  REM BASIC: Remap aliases on the fly
+  10 & "/alias 1 DOSMyungjo.ttf"
+  20 & "/alias title Sam3KRFont.ttf"
+  30 & "[F:1]CUSTOM FONT 1 [F:title]TITLE FONT"
+  ```
 
 > [!TIP]
 > Both the **PC Font Server streaming mode** and the **Standalone Floppy DSK offline mode** support this exact same syntax! When baking a DSK with `build_font_dsk.py`, the builder inspects program tags and pre-renders each glyph with its designated font into the `$6000` cache.

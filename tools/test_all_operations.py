@@ -178,19 +178,22 @@ def test_4_multifont_and_program_font_switching():
     assert len(g_han) == 32 and len(g_hanja) == 32
     print("  * Comma-separated font fallback chaining: OK")
 
-    # 4. BASIC Program Font Extraction
+    # 4. BASIC Program Font Extraction & Custom Aliases
     basic_code = """
     10 REM TEST PROGRAM
-    20 & "[F:neodgm]도스타자"
-    30 & "/font dosmyungjo"
-    40 & "명조체본문"
+    20 & "/alias 1 DOSMyungjo.ttf"
+    30 & "/alias title Sam3KRFont.ttf"
+    40 & "[F:1]명조체"
+    50 & "[F:title]삼국지"
     """
     char_map = extract_font_tagged_characters(basic_code)
-    assert char_map['도'] == 'neodgm'
-    assert char_map['타'] == 'neodgm'
-    assert char_map['명'] == 'dosmyungjo'
-    assert char_map['본'] == 'dosmyungjo'
-    print("  * Program-level font tag extraction & command mapping: OK")
+    assert char_map['명'] == '1'
+    assert char_map['삼'] == 'title'
+    r_custom_1 = get_font_rasterizer("1")
+    assert r_custom_1 is not None and len(r_custom_1.rasterize("명")) == 32
+    r_custom_title = get_font_rasterizer("title")
+    assert r_custom_title is not None and len(r_custom_title.rasterize("삼")) == 32
+    print("  * Custom arbitrary font aliases & number overrides: OK")
     print("  -> TEST 4 PASSED!")
 
 def test_5_live_applewin_emulator():

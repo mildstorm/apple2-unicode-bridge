@@ -332,6 +332,26 @@ Applesoft BASIC 프로그램 소스 코드 내에서 원하는 폰트를 실시�
 | `galmuri9`, `7` | 7 | `Galmuri9.ttf` | 9px 갈무리 마이크로 |
 | `noto`, `notoserif`, `cjk`, `8` | 8 | `NotoSerifCJK16.ttf` | 14px NotoSerif 벡터 |
 
+#### 방법 3. 폰트 번호 및 별칭 사용자 임의 재지정 (Custom Alias & Number Overrides)
+기본 번호나 별칭 외에, 사용자가 원하는 번호나 이름을 임의로 지정하여 사용할 수 있습니다:
+
+1. **커맨드라인에서 임의 지정 (`별칭=폰트파일명`)**:
+   ```bash
+   # 1번에 명조, 2번에 둥근모, title에 삼국지, body에 갈무리14 지정
+   python unicode_server.py --font "1=DOSMyungjo.ttf, 2=neodgm.ttf, title=Sam3KRFont.ttf, body=Galmuri14.ttf"
+   ```
+2. **BASIC 코드 내에서 실시간 동적 재지정 (`/alias <이름> <폰트>`)**:
+   ```basic
+   10 & "/alias 1 DOSMyungjo.ttf"
+   20 & "/alias title Sam3KRFont.ttf"
+   30 & "[F:1]원하는 폰트 1번 [F:title]제목용 폰트"
+   ```
+3. **파일명 직접 지정**:
+   `fonts/` 디렉터리에 넣은 임의의 TTF 파일명(확장자 제외 또는 포함)을 태그에 바로 사용 가능합니다:
+   ```basic
+   10 & "[F:MyFont]임의의 폰트 출력"
+   ```
+
 > [!TIP]
 > **PC 서버 스트리밍 모드**와 **독립형 플로피 DSK 오프라인 모드** 모두 동일한 태그 문법이 작동합니다!  
 > `build_font_dsk.py`가 디스크 내 BASIC 프로그램을 파싱할 때 `[F:neodgm]` 등의 태그를 인식하여 각 문자별로 지정된 폰트의 글리프를 `$6000` 캐시 테이블에 구워 넣으므로, PC 연결 없이도 완벽하게 동작합니다.

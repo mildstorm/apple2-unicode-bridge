@@ -27,10 +27,10 @@ if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
 from ac_tool import list_dsk_files, export_text_file, put_file, find_applecommander
 
 try:
-    from unicode_server import HangulRasterizer, get_font_rasterizer, parse_font_segments
+    from unicode_server import HangulRasterizer, get_font_rasterizer, parse_font_segments, register_font_mapping, CUSTOM_FONT_ALIASES
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from unicode_server import HangulRasterizer, get_font_rasterizer, parse_font_segments
+    from unicode_server import HangulRasterizer, get_font_rasterizer, parse_font_segments, register_font_mapping, CUSTOM_FONT_ALIASES
 
 def extract_used_characters(text):
     """
@@ -90,6 +90,13 @@ def extract_font_tagged_characters(text, default_font=None):
             m = re.search(r'/(?:font|f)\s+([A-Za-z0-9_.\-]+)', trimmed, re.IGNORECASE)
             if m:
                 current_default = m.group(1).strip()
+
+        if '&' in trimmed and '/alias ' in trimmed.lower():
+            m = re.search(r'/alias\s+([A-Za-z0-9_.\-]+)\s+([A-Za-z0-9_.\-]+)', trimmed, re.IGNORECASE)
+            if m:
+                alias_name = m.group(1).strip().lower()
+                target_val = m.group(2).strip()
+                CUSTOM_FONT_ALIASES[alias_name] = target_val
 
         segments = parse_font_segments(line)
         for font_ident, seg in segments:
@@ -261,6 +268,9 @@ def process_dsk(dsk_path, specific_programs=None, custom_ac=None, font_path=None
     if not os.path.exists(dsk_path):
         print(f"[오류] DSK 파일을 찾을 수 없습니다: {dsk_path}")
         return False
+
+    if font_path:
+        register_font_mapping(font_path)
 
     print(f"\n[1/4] DSK 이미지 분석 중: {dsk_path}")
     files = list_dsk_files(dsk_path, custom_ac=custom_ac)

@@ -178,6 +178,30 @@ def parse_font_segments(text):
     return segments
 
 _RASTERIZER_CACHE = {}
+CUSTOM_FONT_ALIASES = {}
+
+def register_font_mapping(font_arg):
+    """
+    Registers custom font mappings and aliases.
+    Accepts:
+      - Plain list: "neodgm.ttf, Sam3KRFont.ttf" (maps 1->neodgm, 2->Sam3KRFont)
+      - Key=Value list: "1=DOSMyungjo.ttf, title=Sam3KRFont.ttf, body=Galmuri14.ttf"
+    """
+    if not font_arg:
+        return
+    entries = [p.strip() for p in font_arg.split(",") if p.strip()]
+    plain_idx = 1
+    for item in entries:
+        if "=" in item:
+            alias, target = item.split("=", 1)
+            alias = alias.strip().lower()
+            target = target.strip()
+            CUSTOM_FONT_ALIASES[alias] = target
+        else:
+            CUSTOM_FONT_ALIASES[str(plain_idx)] = item
+            stem = os.path.splitext(os.path.basename(item))[0].lower()
+            CUSTOM_FONT_ALIASES[stem] = item
+            plain_idx += 1
 
 def get_font_rasterizer(font_identifier, fallback_rasterizer=None):
     """
@@ -187,6 +211,13 @@ def get_font_rasterizer(font_identifier, fallback_rasterizer=None):
         return fallback_rasterizer
 
     key = str(font_identifier).strip().lower()
+
+    # 0. Check custom user aliases first
+    if key in CUSTOM_FONT_ALIASES:
+        target = CUSTOM_FONT_ALIASES[key]
+        if target.lower() != key:
+            return get_font_rasterizer(target, fallback_rasterizer)
+
     if key in _RASTERIZER_CACHE:
         return _RASTERIZER_CACHE[key]
 
@@ -295,7 +326,8 @@ class HangulRasterizer:
 
         font_paths = []
         if font_path:
-            raw_entries = [p.strip() for p in font_path.split(",") if p.strip()]
+            register_font_mapping(font_path)
+            raw_entries = [p.split("=", 1)[1].strip() if "=" in p else p.strip() for p in font_path.split(",") if p.strip()]
             for item in raw_entries:
                 candidate_p = [
                     item,
@@ -1180,6 +1212,17 @@ class HangulTerminalServer:
                             if new_r:
                                 self.current_rasterizer = new_r
                                 print(f"[System] Active font switched to: {target_f}")
+                        self.send_raw(bytes([0x00]))
+                        continue
+
+                    # Dedicated command: & "/alias <name> <target>"
+                    if stripped_cmd.lower().startswith("/alias "):
+                        parts = stripped_cmd.split()
+                        if len(parts) >= 3:
+                            alias_name = parts[1].strip().lower()
+                            target_val = parts[2].strip()
+                            CUSTOM_FONT_ALIASES[alias_name] = target_val
+                            print(f"[System] Custom font alias registered: '{alias_name}' -> '{target_val}'")
                         self.send_raw(bytes([0x00]))
                         continue
 
