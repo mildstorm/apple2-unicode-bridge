@@ -386,9 +386,6 @@ Rather than being restricted to rigid pre-registered configurations, the engine 
 > [!TIP]
 > Both the **PC Font Server streaming mode** and the **Standalone Floppy DSK offline mode** support this exact same dynamic syntax! When baking a DSK with `build_font_dsk.py`, the builder inspects `/font-add`, `/font-del`, and `[F:...]` commands, generating the appropriate glyphs into the `$6000` cache.
 
-> [!TIP]
-> Both the **PC Font Server streaming mode** and the **Standalone Floppy DSK offline mode** support this exact same syntax! When baking a DSK with `build_font_dsk.py`, the builder inspects program tags and pre-renders each glyph with its designated font into the `$6000` cache.
-
 ### Multi-Font & Multi-Size Showcase: `RUN DEMO`
 
 When running `DEMO` on the Apple II (`RUN DEMO`), the system demonstrates its ability to display **multiple distinct fonts and sizes on the same screen, line by line**:
@@ -414,6 +411,61 @@ Run the font preview utility to render and compare all fonts side-by-side in bot
 python tools/preview_fonts.py
 # Saves side-by-side comparison to docs/images/font_comparison.png
 ```
+
+---
+
+## 🧪 Live Operations & End-to-End Verification
+
+To guarantee that all features operate properly on real Apple II hardware and emulators without regressions, the repository provides comprehensive, hands-on automated verification suites that directly test both the **live streaming serial protocol** and **actual AppleWin emulator execution with pixel-level screen validation**.
+
+### 1. Hands-On Dynamic Font Slot Verification (`tools/test_dynamic_fonts_live.py`)
+
+Run the automated live verification script to test dynamic font slot registration, modification, removal, and rendering across both live TCP and offline DSK modes:
+
+```bash
+python tools/test_dynamic_fonts_live.py
+```
+
+This verification automatically executes the following sequence:
+
+1. **Live TCP Font Server Protocol**:
+   - Performs Applesoft BASIC handshake with `HangulTerminalServer`.
+   - Sends `/font-add 1 neodgm.ttf` (Slot registration) -> verifies server ACK `0x00`.
+   - Sends `[F:1]안녕` -> verifies receipt of 14×16 glyph bitmap packets (`CMD_DRAW_GLYPH 0x81`).
+   - Sends `/font-add 1 DOSMyungjo.ttf` (Slot modification/update) -> verifies immediate slot remapping.
+   - Sends `[F:1]명조` -> verifies updated font rasterization packets.
+   - Sends `/font-del 1` (Slot removal) -> verifies safe unregistration.
+
+2. **Standalone DSK Baking & Live AppleWin Execution**:
+   - Generates a dedicated `FONTTEST` Applesoft BASIC program and injects it into `unicode.dsk`.
+   - Executes `build_font_dsk.py` to extract all referenced characters across all registered fonts into a standalone `FONT` binary ($6000).
+   - Automatically launches `AppleWin.exe -d1 unicode.dsk`.
+   - Types `RUN FONTTEST` into the Apple II keyboard buffer after DOS 3.3 boot.
+   - Captures the real AppleWin window via Win32 GDI `PrintWindow`.
+   - Analyzes display pixels to verify **over 7,700 active green phosphor pixels** on the HGR graphics screen.
+   - Saves the verified live screenshot to `docs/images/actual_fonttest_live.png`:
+
+![Actual Live AppleWin Font Test](docs/images/actual_fonttest_live.png)
+
+### 2. Complete 5-Suite Operations Test (`tools/test_all_operations.py`)
+
+Run the complete multi-tier test suite verifying every component from font loading to live emulator rendering:
+
+```bash
+python tools/test_all_operations.py
+```
+
+| Suite | Scope | Description |
+| :---: | :--- | :--- |
+| **TEST 1** | **Font Loading & FreeType** | Verifies 14×16 glyph rasterization across all 7 bundled TrueType fonts. |
+| **TEST 2** | **DSK Baking & Parsing** | Validates DSK file injection, `FONT` table structure, and binary integrity. |
+| **TEST 3** | **TCP Streaming Protocol** | Tests live socket communication, `0x87` string commands, and `0x81` glyph packet delivery. |
+| **TEST 4** | **Multi-Font & Program Slots** | Verifies inline tag parsing (`[F:...]`), fallback chaining, and `/font-add` / `/font-del` APIs. |
+| **TEST 5** | **Live AppleWin Emulator** | Launches real `AppleWin.exe`, runs `RUN DEMO`, captures the HGR screen, and validates active pixels (>3,800 pixels). |
+
+Captured live verification screenshot from `TEST 5`:
+
+![Actual Live AppleWin Demo](docs/images/actual_applewin_live_demo.png)
 
 ---
 

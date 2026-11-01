@@ -375,7 +375,57 @@ python tools/preview_fonts.py
 
 ---
 
-## 8. 라이선스 (License)
+## 8. 실구동 환경 자동 검증 (Live Verification)
+
+모든 기능이 실제 Apple II 하드웨어 및 AppleWin 에뮬레이터에서 문제없이 작동하는지 확인하기 위해, 시리얼 통신 스트리밍과 독립 실행형 DSK 에뮬레이터 실행을 **픽셀 단위로 직접 검증**하는 종합 자동화 검증 스크립트를 제공합니다.
+
+### 8.1 동적 폰트 슬롯 실구동 통합 검증 (`tools/test_dynamic_fonts_live.py`)
+
+프로그램 레벨 폰트 동적 등록, 변경, 제거 및 인라인 태그 출력이 정상 동작하는지 테스트합니다:
+
+```bash
+python tools/test_dynamic_fonts_live.py
+```
+
+* **동작 단계**:
+  1. **실시간 TCP 폰트 서버 모드 검증**:
+     - `HangulTerminalServer`와 소켓 핸드셰이크 수행
+     - `/font-add 1 neodgm.ttf` (슬롯 등록) 전송 및 `0x00` 응답 수신 확인
+     - `[F:1]안녕` 전송 시 14×16 글리프 비트맵 패킷(`0x81`) 수신 확인
+     - `/font-add 1 DOSMyungjo.ttf` (슬롯 변경) 전송 후 `[F:1]명조`가 명조체로 즉시 재래스터라이징되는지 검증
+     - `/font-del 1` (슬롯 제거) 정상 해제 확인
+  2. **오프라인 DSK 베이킹 & 실제 AppleWin 에뮬레이터 구동**:
+     - `FONTTEST` BASIC 코드를 생성하여 `unicode.dsk`에 주입
+     - `build_font_dsk.py`를 실행하여 폰트 테이블($6000) 자동 빌드
+     - 실제 `AppleWin.exe -d1 unicode.dsk`를 구동하고 DOS 3.3 부팅 후 키보드로 `RUN FONTTEST` 입력
+     - Win32 GDI `PrintWindow`로 에뮬레이터 화면을 캡처하여 **7,700개 이상의 활성 녹색 형광 픽셀** 렌더링 확인
+     - 캡처 결과 파일 저장: `docs/images/actual_fonttest_live.png`
+
+![실제 AppleWin FONTTEST 구동 캡처](docs/images/actual_fonttest_live.png)
+
+### 8.2 전체 시스템 5종 종합 운영 검증 (`tools/test_all_operations.py`)
+
+폰트 로딩부터 실제 에뮬레이터 그래픽 렌더링까지 전체 파이프라인을 5개 영역으로 나누어 검증합니다:
+
+```bash
+python tools/test_all_operations.py
+```
+
+| 검증 단계 | 검증 대상 | 내용 |
+| :---: | :--- | :--- |
+| **TEST 1** | **폰트 로딩 & FreeType** | 번들된 7종 TTF 글리프 래스터라이징 정상 검증 |
+| **TEST 2** | **DSK 빌드 및 무결성** | DSK 파일 주입, `FONT` 테이블 구조 및 바이너리 일치 검증 |
+| **TEST 3** | **TCP 스트리밍 프로토콜** | 라이브 소켓 통신, `0x87` 문자열 명령 및 `0x81` 글리프 패킷 전송 검증 |
+| **TEST 4** | **다중 폰트 & 동적 슬롯** | 인라인 태그(`[F:...]`), 폴백 체이닝, `/font-add` / `/font-del` API 검증 |
+| **TEST 5** | **실제 AppleWin 에뮬레이터** | 실제 `AppleWin.exe`를 실행하여 `RUN DEMO` 구동 및 HGR 화면 픽셀(3,800개 이상) 활성화 검증 |
+
+TEST 5에서 실시간 캡처된 에뮬레이터 구동 화면:
+
+![실제 AppleWin DEMO 구동 캡처](docs/images/actual_applewin_live_demo.png)
+
+---
+
+## 9. 라이선스 (License)
 
 - **소스 코드 및 문서**: [MIT License](LICENSE) (Copyright (c) 2026 mildstorm)
 - **번들 폰트 라이선스**:
