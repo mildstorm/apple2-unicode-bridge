@@ -210,7 +210,7 @@ def patch_hello_program(dsk_path, custom_ac=None):
     prog_bytes = build_applesoft_program(hello_lines)
     put_file(dsk_path, "HELLO", "A", 0x0801, prog_bytes, custom_ac=custom_ac)
 
-def process_dsk(dsk_path, specific_programs=None, custom_ac=None, font_path=None, y_offset=0, box_center=False, force_vector=False):
+def process_dsk(dsk_path, specific_programs=None, custom_ac=None, font_path=None, size=None, y_offset=None, box_center=None, force_vector=False):
     if not os.path.exists(dsk_path):
         print(f"[오류] DSK 파일을 찾을 수 없습니다: {dsk_path}")
         return False
@@ -243,7 +243,7 @@ def process_dsk(dsk_path, specific_programs=None, custom_ac=None, font_path=None
         return False
 
     print(f"\n[3/4] PC TrueType 폰트로 14x16 비트맵 글리프 래스터라이징 중...")
-    rasterizer = HangulRasterizer(font_path=font_path, font_size=14, y_offset=y_offset, box_center=box_center, force_vector=force_vector)
+    rasterizer = HangulRasterizer(font_path=font_path, font_size=size, y_offset=y_offset, box_center=box_center, force_vector=force_vector)
     font_bytes = build_font_table(chars_list, rasterizer)
     print(f"  * 생성된 FONT 바이너리 크기: {len(font_bytes)} 바이트 (메모리 로드 주소: $6000)")
 
@@ -278,8 +278,9 @@ if __name__ == '__main__':
     parser.add_argument("--dsk", default="unicode.dsk", help="Path to Apple II DSK image (default: unicode.dsk)")
     parser.add_argument("--programs", default=None, help="Comma-separated list of BASIC programs to extract fonts from (default: all)")
     parser.add_argument("--font", default=None, help="Path to TTF/TTC font file (default: Galmuri / Gulim / NotoSerif)")
-    parser.add_argument("--y-offset", type=int, default=0, help="Vertical offset adjustment in pixels (default: 0, e.g. 1 for top padding)")
-    parser.add_argument("--box-center", action="store_true", help="Center glyph vertically in 16-row box instead of baseline math")
+    parser.add_argument("--size", type=int, default=None, help="Font size (default: auto-detected from font native size)")
+    parser.add_argument("--y-offset", type=int, default=None, help="Vertical offset adjustment in pixels (default: auto)")
+    parser.add_argument("--box-center", action="store_true", default=None, help="Center glyph vertically in 16-row box (default: auto for 16px/11px/9px)")
     parser.add_argument("--force-vector", action="store_true", help="Force vector outline rasterization (ignore embedded bitmaps)")
     parser.add_argument("--ac-jar", default=None, help="Explicit path to AppleCommander JAR file")
     args = parser.parse_args()
@@ -290,6 +291,7 @@ if __name__ == '__main__':
         progs,
         custom_ac=args.ac_jar,
         font_path=args.font,
+        size=args.size,
         y_offset=args.y_offset,
         box_center=args.box_center,
         force_vector=args.force_vector

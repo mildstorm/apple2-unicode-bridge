@@ -144,11 +144,31 @@ MULTI_FONT_SPECS = [
     ("漢字萬國훈민정음", "NotoSerifCJK16.ttf", 14, 0, False, True),
 ]
 
+def auto_detect_font_config(font_path):
+    """Automatically detects native pixel size and vertical alignment for bitmap fonts."""
+    if not font_path:
+        return 14, 1, False # Default Galmuri14
+    base = os.path.basename(font_path).lower()
+    if 'galmuri14' in base:
+        return 14, 1, False # 14px with 1-line top padding
+    elif 'galmuri11' in base:
+        return 11, 0, True  # 11px box-centered
+    elif 'galmuri9' in base:
+        return 9, 0, True   # 9px box-centered
+    elif 'galmuri7' in base:
+        return 7, 0, True   # 7px box-centered
+    elif any(k in base for k in ['neodgm', 'sam3k', 'dosgothic', 'dosmyungjo', 'dosiyagi', 'dossaemmul']):
+        return 16, 0, True  # 16px DOS fonts box-centered
+    elif 'gulim' in base or 'dotum' in base:
+        return 14, 0, False # 14px Windows embedded bitmap
+    return 14, 0, False
+
 class HangulRasterizer:
-    def __init__(self, font_path=None, font_size=14, y_offset=0, box_center=False, force_vector=False):
-        self.font_size = font_size
-        self.y_offset = y_offset
-        self.box_center = box_center
+    def __init__(self, font_path=None, font_size=None, y_offset=None, box_center=None, force_vector=False):
+        auto_sz, auto_y, auto_center = auto_detect_font_config(font_path)
+        self.font_size = font_size if font_size is not None else auto_sz
+        self.y_offset = y_offset if y_offset is not None else auto_y
+        self.box_center = box_center if box_center is not None else auto_center
         self.force_vector = force_vector
         self.faces = []
         self.pil_fonts = []
@@ -714,7 +734,7 @@ class HangulTerminalServer:
     MAX_COLS = 20
     MAX_ROWS = 12
 
-    def __init__(self, host="127.0.0.1", port=1977, com_port=None, font_path=None, font_size=14, y_offset=0, box_center=False, force_vector=False, use_popup=False):
+    def __init__(self, host="127.0.0.1", port=1977, com_port=None, font_path=None, font_size=None, y_offset=None, box_center=None, force_vector=False, use_popup=False):
         self.host = host
         self.port = port
         self.com_port = com_port
@@ -1166,9 +1186,9 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=1977, help="TCP Port (default: 1977)")
     parser.add_argument("--com", default=None, help="COM port (e.g. COM1) instead of TCP")
     parser.add_argument("--font", default=None, help="Path to TTF/TTC font file (default: Galmuri / Gulim / NotoSerif)")
-    parser.add_argument("--size", type=int, default=14, help="Font size (default: 14)")
-    parser.add_argument("--y-offset", type=int, default=0, help="Vertical offset adjustment in pixels (default: 0, e.g. 1 for top padding)")
-    parser.add_argument("--box-center", action="store_true", help="Center glyph vertically in 16-row box instead of baseline math")
+    parser.add_argument("--size", type=int, default=None, help="Font size (default: auto-detected from font native size)")
+    parser.add_argument("--y-offset", type=int, default=None, help="Vertical offset adjustment in pixels (default: auto)")
+    parser.add_argument("--box-center", action="store_true", default=None, help="Center glyph vertically in 16-row box (default: auto for 16px/11px/9px)")
     parser.add_argument("--force-vector", action="store_true", help="Force vector outline rasterization (ignore embedded bitmaps)")
     parser.add_argument("--popup", action="store_true", help="Use GUI popup window for Korean/Hanja input instead of console prompt")
     args = parser.parse_args()
