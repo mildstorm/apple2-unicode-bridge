@@ -604,6 +604,11 @@ The included `COLORDEMO` program draws a full-screen HGR background grid and pri
 
 SuperSerial Card(SSC) 등의 직렬 통신 인터페이스 카드가 없는 순정 애플 II/IIe 본체에서도, **PC 3.5mm 오디오 출력(이어폰/스피커 단자)과 애플 II 후면 Cassette IN 단자** 연결만으로 폰트 데이터를 실시간 전송받을 수 있습니다.
 
+> [!IMPORTANT]
+> **AppleWin 에뮬레이터 제약 사항 (실기 전용 기능)**:
+> `AppleWin` 에뮬레이터는 PC 사운드카드 입력(마이크/라인인)을 Apple II 카세트 포트(`$C060 TAPEIN`)로 전달하는 하드웨어 에뮬레이션을 지원하지 않습니다 (`Tape.cpp: TapeRead` 호출 시 항상 부동 버스(Floating Bus) 값만 반환).
+> 따라서 본 오디오 전송 기능은 **실제 애플 II 실기(Real Hardware)**에서 PC와 애플 II 후면 Cassette IN 단자를 3.5mm 오디오 케이블로 직결할 때 사용하는 **실기 전용 기능**입니다. AppleWin 에뮬레이터 환경에서는 **시리얼(TCP/COM 포트) 연결** 또는 **독립형 DSK 폰트 캐시(`$6000`)** 방식을 사용하십시오.
+
 ### 1. 전송 규격 (ADTPro Audio FSK Modulation)
 ADTPro(`BytesToWav.java` 및 `AudioTransport.java`)의 검증된 오디오 복조 프로토콜을 탑재했습니다:
 - **오디오 포맷**: 44.1 kHz, 8-bit unsigned PCM (.WAV)
