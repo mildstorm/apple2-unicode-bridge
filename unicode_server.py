@@ -1602,7 +1602,21 @@ if __name__ == "__main__":
     parser.add_argument("--color", default="white", help="Default Apple II HGR color: 0..7 or black, green, violet, white, orange, blue (default: white)")
     parser.add_argument("--mode", default="replace", help="Default drawing mode: replace, overlay, or xor (default: replace)")
     parser.add_argument("--popup", action="store_true", help="Use GUI popup window for Korean/Hanja input instead of console prompt")
+    parser.add_argument("--audio-wav", default=None, help="Export entire font table as ADTPro-compatible WAV file for Apple II Cassette In")
+    parser.add_argument("--play-audio", action="store_true", help="Play font audio stream through PC audio out directly to Apple II Cassette In")
     args = parser.parse_args()
+
+    if args.audio_wav or args.play_audio:
+        from adtpro_audio import stream_font_data_as_audio
+        wav_file = args.audio_wav or "font_audio.wav"
+        print(f"[ADTPro-Audio] Generating font audio stream for Apple II cassette input: {wav_file}")
+        # Build font cache table using bundled/specified fonts
+        from build_font_dsk import build_font_table
+        rasterizer = HangulRasterizer(font_path=args.font, font_size=args.size, y_offset=args.y_offset, box_center=args.box_center, force_vector=args.force_vector)
+        demo_chars = "안녕하세요애플투도스타자방이야기三國志英雄崛起붓글씨고전바탕조밀한작은폰트초소형모니터화면漢字萬國훈민정음"
+        font_data = build_font_table(demo_chars, rasterizer)
+        stream_font_data_as_audio(font_data, output_wav=wav_file, play=args.play_audio)
+        sys.exit(0)
 
     server = HangulTerminalServer(
         host=args.host,

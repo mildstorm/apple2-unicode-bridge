@@ -600,6 +600,45 @@ The included `COLORDEMO` program draws a full-screen HGR background grid and pri
 
 ---
 
+## 🎧 ADTPro Audio / Cassette Transport (시리얼 카드 없는 환경 지원)
+
+SuperSerial Card(SSC) 등의 직렬 통신 인터페이스 카드가 없는 순정 애플 II/IIe 본체에서도, **PC 3.5mm 오디오 출력(이어폰/스피커 단자)과 애플 II 후면 Cassette IN 단자** 연결만으로 폰트 데이터를 실시간 전송받을 수 있습니다.
+
+### 1. 전송 규격 (ADTPro Audio FSK Modulation)
+ADTPro(`BytesToWav.java` 및 `AudioTransport.java`)의 검증된 오디오 복조 프로토콜을 탑재했습니다:
+- **오디오 포맷**: 44.1 kHz, 8-bit unsigned PCM (.WAV)
+- **리더톤(Leader Tone)**: 770 Hz 정현파
+- **싱크 비트(Sync Bit)**: 2200 Hz
+- **데이터 비트 '0'**: 2000 Hz 반주기 (~250 µs)
+- **데이터 비트 '1'**: 1000 Hz 반주기 (~500 µs)
+- **체크섬 및 트레일러**: Running XOR 체크섬 바이트 + 200 Hz 트레일러 + 무음 구간
+
+### 2. PC 측 폰트 오디오 스트리밍 도구
+DSK 이미지 내의 폰트 데이터를 오디오 파형으로 즉시 변환하고 PC 스피커나 이어폰 단자로 송출합니다:
+```bash
+# 1) DSK 폰트 캐시를 WAV 파일로 생성하고 PC 사운드카드로 즉시 재생
+python tools/audio_font_streamer.py --dsk unicode.dsk --play
+
+# 2) 또는 원하는 파일명의 WAV로만 저장
+python tools/audio_font_streamer.py --dsk unicode.dsk --wav my_font.wav
+
+# 3) unicode_server에서 직접 폰트 오디오 스트림 생성
+python unicode_server.py --audio-wav font_stream.wav
+```
+
+### 3. 애플 II 드라이버 수신 모드 전환
+애플 II측 6502 드라이버는 `$C060`(TAPEIN)의 0↔1 천이 에지 주기를 정밀 측정하여 오디오 신호를 실시간 디코딩합니다:
+- **오디오 모드로 전환**:
+  ```basic
+  & "/audio"     (또는 & "/aud")
+  ```
+- **시리얼(SuperSerial) 모드로 복귀**:
+  ```basic
+  & "/serial"    (또는 & "/ser")
+  ```
+
+---
+
 ## 🤝 Contributing
 
 Contributions to `apple2-unicode-bridge` are warmly welcomed! Areas of active exploration:

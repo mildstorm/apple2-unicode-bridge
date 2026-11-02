@@ -26,6 +26,9 @@ ACIA_STAT       = $C0A9
 ACIA_CMD        = $C0AA
 ACIA_CTRL       = $C0AB
 
+TAPEIN          = $C060
+TAPEOUT         = $C020
+
 PTR_LO          = $06
 PTR_HI          = $07
 COL_OFFSET      = $08
@@ -49,6 +52,12 @@ CUR_COL         = $1C
 CUR_ROW         = $1D
 DRAW_MODE       = $1E
 CUR_COLOR       = $1F
+IO_MODE         = $20
+AUD_LASTIN      = $21
+AUD_TIMEY       = $22
+AUD_BITCNT      = $23
+AUD_VAL         = $24
+AUD_CHK         = $25
 HCOLOR_FLG      = $E4
 HGR_HAS_DRAWN   = $F9
 
@@ -66,6 +75,7 @@ INIT
     STA CUR_COL
     STA CUR_ROW
     STA DRAW_MODE
+    STA IO_MODE
     STA HGR_HAS_DRAWN
     LDA #$03
     STA CUR_COLOR
@@ -485,7 +495,7 @@ HSC_CHECK_X
 
 HSC_CHECK_P
     CMP #'p'            ; /pos col row
-    BNE SKIP_SLASH_TO_END
+    BNE HSC_CHECK_AUD
     JSR ADVANCE_TO_SPACE_ARG
     BCC SKIP_SLASH_TO_END
     JSR PARSE_DEC_NUM
@@ -495,6 +505,21 @@ HSC_CHECK_P
     BCC SKIP_SLASH_TO_END
     JSR PARSE_DEC_NUM
     STA CUR_ROW
+    JMP SKIP_SLASH_TO_END
+
+HSC_CHECK_AUD
+    CMP #'a'            ; /audio or /aud?
+    BNE HSC_CHECK_SER
+    LDA #1
+    STA IO_MODE
+    JMP SKIP_SLASH_TO_END
+
+HSC_CHECK_SER
+    CMP #'s'            ; /serial or /ser?
+    BNE SKIP_SLASH_TO_END
+    LDA #0
+    STA IO_MODE
+    JMP SKIP_SLASH_TO_END
 
 SKIP_SLASH_TO_END
     LDY #0
@@ -1394,19 +1419,73 @@ CLR_40
 
 SEND_BYTE
     PHA
-WAIT_TX
+    LDA IO_MODE
+    BEQ SEND_SERIAL
+    ; Audio mode - no feedback needed for font streaming, toggle speaker/tapeout
+    STA TAPEOUT
+    PLA
+    RTS
+SEND_SERIAL
     LDA ACIA_STAT
     AND #$10
-    BEQ WAIT_TX
+    BEQ SEND_SERIAL
     PLA
     STA ACIA_DATA
     RTS
 
 RECV_BYTE
+    LDA IO_MODE
+    BNE AUD_RECV_BYTE
+RECV_SERIAL
     LDA ACIA_STAT
     AND #$08
-    BEQ RECV_BYTE
+    BEQ RECV_SERIAL
     LDA ACIA_DATA
+    RTS
+
+; --- ADTPro Audio / Cassette Protocol Receiver ---
+; Standard Apple II Audio FSK demodulator compatible with ADTPro BytesToWav
+; Leader 770 Hz, Sync 2000-2200 Hz, 0-bit 2000 Hz, 1-bit 1000 Hz
+
+AUD_RECV_BYTE
+    LDA #$08
+    STA AUD_BITCNT
+AUD_BIT_LOOP
+    LDA #$FF
+    STA AUD_TIMEY
+    JSR AUD_RD2BIT
+    ROL AUD_VAL
+    DEC AUD_BITCNT
+    BNE AUD_BIT_LOOP
+    LDA AUD_VAL
+    RTS
+
+AUD_RD2BIT
+    JSR AUD_RDBIT
+AUD_RDBIT
+    DEC AUD_TIMEY
+    BEQ AUD_TMOT
+    LDA KBD
+    BPL AUD_NO_KBD
+    STA KBDSTRB
+    CMP #$9B            ; ESC key to cancel
+    BEQ AUD_ESC
+AUD_NO_KBD
+    DEY
+    LDA TAPEIN
+    EOR AUD_LASTIN
+    BPL AUD_RDBIT
+    EOR AUD_LASTIN
+    STA AUD_LASTIN
+    CPY #$80            ; Carry set if Y >= $80 (1000 Hz, '1'), clear if Y < $80 (2000 Hz, '0')
+    RTS
+
+AUD_TMOT
+    CLC
+    RTS
+AUD_ESC
+    PLA
+    PLA
     RTS
 
 SAVE_X     .byte 0
