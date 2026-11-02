@@ -16,9 +16,10 @@ sys.path.insert(0, ROOT_DIR)
 from inject_basic import build_applesoft_program
 from ac_tool import put_file
 from build_font_dsk import process_dsk
+from unicode_server import encode_apple2_multilingual
 
-def encode_hex(text):
-    return ''.join(f'{b:02X}' for b in text.encode('utf-8'))
+def enc(text):
+    return encode_apple2_multilingual(text).decode('ascii')
 
 def make_colordemo_program():
     lines = [
@@ -28,15 +29,15 @@ def make_colordemo_program():
         (40, 'FOR I = 0 TO 279 STEP 28: HPLOT I,0 TO I,191: NEXT I'),
         (50, '& "/pos 0 0"'),
         (60, '& "/overlay"'),
-        (70, f'& "[C:green]\\K{encode_hex("녹색 오버레이 글씨")}\\N"'),
-        (80, f'& "[C:violet]\\K{encode_hex("보라색 유니코드 글꼴")}\\N"'),
-        (90, f'& "[C:orange]\\K{encode_hex("오렌지색 배경 위 글자")}\\N"'),
-        (100, f'& "[C:blue]\\K{encode_hex("푸른색 그래픽 오버레이")}\\N"'),
-        (110, f'& "[C:white]\\K{encode_hex("선명한 백색 텍스트")}\\N"'),
+        (70, f'& "[C:green]{enc("녹색 오버레이 글씨")}"'),
+        (80, f'& "[C:violet]{enc("보라색 유니코드 글꼴")}"'),
+        (90, f'& "[C:orange]{enc("오렌지색 배경 위 글자")}"'),
+        (100, f'& "[C:blue]{enc("푸른색 그래픽 오버레이")}"'),
+        (110, f'& "[C:white]{enc("선명한 백색 텍스트")}"'),
         (120, '& "/replace"'),
-        (130, f'& "[C:white]\\K{encode_hex("리플레이스는 배경 지움")}\\N"'),
+        (130, f'& "[C:white]{enc("리플레이스는 배경 지움")}"'),
         (140, '& "/xor"'),
-        (150, f'& "[C:white]\\K{encode_hex("반전 엑스오어 모드")}\\N"'),
+        (150, f'& "[C:white]{enc("반전 엑스오어 모드")}"'),
         (160, 'END'),
     ]
     return lines
@@ -51,6 +52,12 @@ def main():
     prog_bytes = build_applesoft_program(lines)
     put_file(dsk_path, "COLORDEMO", "A", 0x0801, prog_bytes)
     print(f"COLORDEMO successfully injected into {dsk_path}!")
+
+    # Also update HANGUL driver from UNICODE.BIN
+    driver_bin = os.path.join(ROOT_DIR, "UNICODE.BIN")
+    if os.path.exists(driver_bin):
+        put_file(dsk_path, "HANGUL", "B", 0x4000, open(driver_bin, "rb").read())
+        print(f"Updated HANGUL driver on {dsk_path} from {driver_bin}")
 
     # Re-bake DSK font cache
     print("Re-baking DSK font cache...")

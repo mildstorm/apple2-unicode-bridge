@@ -217,19 +217,29 @@ def parse_draw_mode(mode_spec, default=0):
     return default
 
 def apply_color_to_glyph(glyph_32: bytes, color_idx: int) -> bytes:
-    """Applies Apple II HGR color bit-mask and high-bit palette to a 32-byte (14x16) glyph."""
+    """Applies Apple II HGR color bit-mask, high-bit palette, and stroke expansion to a 32-byte (14x16) glyph."""
     c = parse_hgr_color(color_idx, default=3)
-    if c == 3:
+    if c in (3, 7): # White (100% full-resolution, all dots preserved)
         return glyph_32
-    m0, m1 = HGR_COLOR_MASKS[c]
-    hb0, hb1 = m0 & 0x80, m1 & 0x80
-    pat0, pat1 = m0 & 0x7F, m1 & 0x7F
+    if c in (0, 4): # Black
+        return bytes(32)
+
+    hb = 0x80 if c in (5, 6) else 0x00
+    color_phase_mask = 0x2AAA if c in (1, 5) else 0x1555
+
     out = bytearray(32)
     for r in range(16):
         b0 = glyph_32[r * 2] & 0x7F
         b1 = glyph_32[r * 2 + 1] & 0x7F
-        out[r * 2]     = (b0 & pat0) | hb0
-        out[r * 2 + 1] = (b1 & pat1) | hb1
+        val = b0 | (b1 << 7)
+        if val:
+            expanded = val | (val << 1) | (val >> 1)
+            colored_val = (expanded & color_phase_mask) & 0x3FFF
+            out[r * 2]     = (colored_val & 0x7F) | hb
+            out[r * 2 + 1] = ((colored_val >> 7) & 0x7F) | hb
+        else:
+            out[r * 2]     = hb
+            out[r * 2 + 1] = hb
     return bytes(out)
 
 def parse_styled_segments(text, default_font=None, default_color=None, default_mode=None):

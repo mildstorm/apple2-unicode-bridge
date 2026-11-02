@@ -36,6 +36,12 @@ CACHE_PTR_LO    = $0C
 CACHE_PTR_HI    = $0D
 SEARCH_CNT      = $0E
 TEMP_BYTE       = $0F
+RAW_B0          = $10
+RAW_B1          = $11
+EXP_B0          = $12
+EXP_B1          = $13
+TEMP_B0         = $14
+TEMP_B1         = $15
 KEY_0           = $19
 KEY_1           = $1A
 KEY_2           = $1B
@@ -701,6 +707,31 @@ HEX_ADV_2
     ORA TEMP_BYTE
     STA KEY_0
 
+    CMP #$20
+    BNE NOT_HEX_SPACE
+    ; Space character inside hex stream
+    LDA DRAW_MODE
+    BNE HEX_SP_ADV
+    JSR CLEAR_CELL_14X16
+HEX_SP_ADV
+    LDA CUR_COL
+    CLC
+    ADC #2
+    STA CUR_COL
+    CMP #40
+    BCC HEX_SP_OK
+    LDA #0
+    STA CUR_COL
+    INC CUR_ROW
+    LDA CUR_ROW
+    CMP #12
+    BCC HEX_SP_OK
+    DEC CUR_ROW
+    JSR SCROLL_HGR
+HEX_SP_OK
+    JMP HEX_CHAR_LOOP
+
+NOT_HEX_SPACE
     ; Parse Byte 1
     INC TXTPTR_LO
     BNE HEX_ADV_3
@@ -885,78 +916,141 @@ RENDER_CACHE_ROWS
     ASL
     TAY
     LDA (SRC_LO),Y
-    STA TEMP_BYTE
-    LDY CUR_COLOR
-    LDA COLOR_MASK_0,Y
-    AND #$7F
-    AND TEMP_BYTE
-    STA TEMP_BYTE
-    LDA COLOR_MASK_0,Y
-    AND #$80
-    ORA TEMP_BYTE
-    STA TEMP_BYTE
-
-    LDY #0
-    LDA DRAW_MODE
-    BEQ CACHE_STORE_B0
-    CMP #1
-    BEQ CACHE_OR_B0
-    ; XOR mode (DRAW_MODE == 2)
-    LDA TEMP_BYTE
-    AND #$7F
-    EOR (PTR_LO),Y
-    STA (PTR_LO),Y
-    JMP CACHE_DO_B1
-CACHE_OR_B0
-    ; Overlay mode (DRAW_MODE == 1)
-    LDA (PTR_LO),Y
-    AND #$7F
-    ORA TEMP_BYTE
-    STA (PTR_LO),Y
-    JMP CACHE_DO_B1
-CACHE_STORE_B0
-    ; Replace mode (DRAW_MODE == 0)
-    LDA TEMP_BYTE
-    STA (PTR_LO),Y
-
-CACHE_DO_B1
-    TXA
-    ASL
-    TAY
+    STA RAW_B0
     INY
     LDA (SRC_LO),Y
+    STA RAW_B1
+
+    ; Check if color is White (3 or 7)
+    LDA CUR_COLOR
+    CMP #3
+    BEQ DO_WHITE_GLYPH
+    CMP #7
+    BEQ DO_WHITE_GLYPH
+    CMP #0
+    BEQ DO_BLACK_GLYPH
+    CMP #4
+    BEQ DO_BLACK_GLYPH
+
+    ; Color expansion (Green, Violet, Orange, Blue)
+    ; Expand B0 - combine left and right shifts
+    LDA RAW_B0
     STA TEMP_BYTE
+    ASL
+    ORA TEMP_BYTE
+    STA EXP_B0
+    LDA TEMP_BYTE
+    LSR
+    ORA EXP_B0
+    STA EXP_B0
+    ; Check boundary bit 0 of RAW_B1
+    LDA RAW_B1
+    LSR
+    BCC NO_BD_B1
+    LDA #$40
+    ORA EXP_B0
+    STA EXP_B0
+NO_BD_B1
+    ; Expand B1 - combine left and right shifts
+    LDA RAW_B1
+    STA TEMP_BYTE
+    ASL
+    ORA TEMP_BYTE
+    STA EXP_B1
+    LDA TEMP_BYTE
+    LSR
+    ORA EXP_B1
+    STA EXP_B1
+    ; Check boundary bit 6 of RAW_B0
+    LDA RAW_B0
+    AND #$40
+    BEQ NO_BD_B0
+    LDA #$01
+    ORA EXP_B1
+    STA EXP_B1
+NO_BD_B0
+
+    ; Apply color mask & palette high-bit
     LDY CUR_COLOR
+    LDA COLOR_MASK_0,Y
+    AND #$7F
+    AND EXP_B0
+    ORA COLOR_HB,Y
+    STA TEMP_B0
+
     LDA COLOR_MASK_1,Y
     AND #$7F
-    AND TEMP_BYTE
-    STA TEMP_BYTE
-    LDA COLOR_MASK_1,Y
-    AND #$80
-    ORA TEMP_BYTE
-    STA TEMP_BYTE
+    AND EXP_B1
+    ORA COLOR_HB,Y
+    STA TEMP_B1
+    JMP DO_DRAW_CELL
 
+DO_WHITE_GLYPH
+    LDY CUR_COLOR
+    LDA RAW_B0
+    AND #$7F
+    ORA COLOR_HB,Y
+    STA TEMP_B0
+    LDA RAW_B1
+    AND #$7F
+    ORA COLOR_HB,Y
+    STA TEMP_B1
+    JMP DO_DRAW_CELL
+
+DO_BLACK_GLYPH
+    LDY CUR_COLOR
+    LDA COLOR_HB,Y
+    STA TEMP_B0
+    STA TEMP_B1
+
+DO_DRAW_CELL
+    ; Draw Byte 0
+    LDY #0
+    LDA DRAW_MODE
+    BEQ DRAW_STORE_B0
+    CMP #1
+    BEQ DRAW_OR_B0
+    ; XOR mode (DRAW_MODE == 2)
+    LDA TEMP_B0
+    AND #$7F
+    EOR (PTR_LO),Y
+    STA (PTR_LO),Y
+    JMP DRAW_DO_B1
+DRAW_OR_B0
+    ; Overlay mode (DRAW_MODE == 1)
+    LDA (PTR_LO),Y
+    AND #$7F
+    ORA TEMP_B0
+    STA (PTR_LO),Y
+    JMP DRAW_DO_B1
+DRAW_STORE_B0
+    ; Replace mode (DRAW_MODE == 0)
+    LDA TEMP_B0
+    STA (PTR_LO),Y
+
+DRAW_DO_B1
+    ; Draw Byte 1
     LDY #1
     LDA DRAW_MODE
-    BEQ CACHE_STORE_B1
+    BEQ DRAW_STORE_B1
     CMP #1
-    BEQ CACHE_OR_B1
+    BEQ DRAW_OR_B1
     ; XOR mode (DRAW_MODE == 2)
-    LDA TEMP_BYTE
+    LDA TEMP_B1
     AND #$7F
     EOR (PTR_LO),Y
     STA (PTR_LO),Y
     JMP CACHE_NEXT_ROW
-CACHE_OR_B1
+DRAW_OR_B1
     ; Overlay mode (DRAW_MODE == 1)
     LDA (PTR_LO),Y
     AND #$7F
-    ORA TEMP_BYTE
+    ORA TEMP_B1
     STA (PTR_LO),Y
     JMP CACHE_NEXT_ROW
-CACHE_STORE_B1
+DRAW_STORE_B1
     ; Replace mode (DRAW_MODE == 0)
-    LDA TEMP_BYTE
+    LDA TEMP_B1
     STA (PTR_LO),Y
 
 CACHE_NEXT_ROW
@@ -1290,12 +1384,12 @@ COPY_40
     CPX #176
     BNE SCROLL_LINE
 
-    LDA #0
 CLEAR_BOTTOM
     LDA HGR_LO,X
     STA PTR_LO
     LDA HGR_HI,X
     STA PTR_HI
+    LDA #0
     LDY #39
 CLR_40
     STA (PTR_LO),Y
@@ -1328,8 +1422,9 @@ SAVE_Y     .byte 0
 SAVE_CNT   .byte 0
 BUF_HEAD   .byte 0
 BUF_TAIL   .byte 0
-COLOR_MASK_0 .byte $00, $2A, $55, $7F, $80, $AA, $D5, $FF
-COLOR_MASK_1 .byte $00, $55, $2A, $7F, $80, $D5, $AA, $FF
+COLOR_MASK_0 .byte $00, $2A, $55, $7F, $00, $2A, $55, $7F
+COLOR_MASK_1 .byte $00, $55, $2A, $7F, $00, $55, $2A, $7F
+COLOR_HB     .byte $00, $00, $00, $00, $80, $80, $80, $80
 BUF_START  .dsb 256, 0
 
 HGR_LO

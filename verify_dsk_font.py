@@ -115,40 +115,73 @@ def verify_and_render(dsk_file="unicode.dsk", custom_ac=None):
                     elif c_tag in ('blue', 'cyan', '6', 'b', 'c'): cur_color = 6
                     elif c_tag in ('black', '0', '4'): cur_color = 0
 
-                matches = re.finditer(r'\\K([0-9A-Fa-f]+)\\N', line)
+                matches = list(re.finditer(r'\\K([0-9A-Fa-f]+)\\N', line))
                 drawn_in_line = False
+                last_m_end = 0
+
                 for m in matches:
+                    # Check for spaces before this match
+                    between = line[last_m_end:m.start()]
+                    if last_m_end > 0 and ' ' in between:
+                        cur_col += between.count(' ')
+                    last_m_end = m.end()
+
                     hex_str = m.group(1)
                     raw_bytes = bytes.fromhex(hex_str)
-                    for c_idx in range(0, len(raw_bytes), 3):
+                    c_idx = 0
+                    while c_idx < len(raw_bytes):
+                        if raw_bytes[c_idx] == 0x20:
+                            cur_col += 1
+                            c_idx += 1
+                            continue
                         key = raw_bytes[c_idx:c_idx+3]
+                        c_idx += 3
                         if key in glyph_cache:
                             glyph = glyph_cache[key]
                             # If replace mode, clear 14x16 box
                             if draw_mode == 0:
                                 draw_buffer.rectangle([cur_col * 14, cur_row * 16, cur_col * 14 + 13, cur_row * 16 + 15], fill=(10, 20, 12))
                             
-                            c_rgb = COLOR_RGB.get(cur_color, (65, 255, 75))
-                            for r in range(16):
-                                b0 = glyph[r * 2]
-                                b1 = glyph[r * 2 + 1]
-                                y = cur_row * 16 + r
-                                for c in range(7):
-                                    if (b0 >> c) & 1:
-                                        target_x = cur_col * 14 + c
-                                        if draw_mode == 2:
-                                            px = color_screen.getpixel((target_x, y))
-                                            color_screen.putpixel((target_x, y), (255 - px[0], 255 - px[1], 255 - px[2]))
-                                        else:
-                                            color_screen.putpixel((target_x, y), c_rgb)
-                                for c in range(7):
-                                    if (b1 >> c) & 1:
-                                        target_x = cur_col * 14 + 7 + c
-                                        if draw_mode == 2:
-                                            px = color_screen.getpixel((target_x, y))
-                                            color_screen.putpixel((target_x, y), (255 - px[0], 255 - px[1], 255 - px[2]))
-                                        else:
-                                            color_screen.putpixel((target_x, y), c_rgb)
+                            c_rgb = COLOR_RGB.get(cur_color, (255, 255, 255))
+                            if cur_color in (3, 7): # White: 100% full-resolution, every dot preserved
+                                for r in range(16):
+                                    b0 = glyph[r * 2] & 0x7F
+                                    b1 = glyph[r * 2 + 1] & 0x7F
+                                    y = cur_row * 16 + r
+                                    for c in range(7):
+                                        if (b0 >> c) & 1:
+                                            target_x = cur_col * 14 + c
+                                            if draw_mode == 2:
+                                                px = color_screen.getpixel((target_x, y))
+                                                color_screen.putpixel((target_x, y), (255 - px[0], 255 - px[1], 255 - px[2]))
+                                            else:
+                                                color_screen.putpixel((target_x, y), c_rgb)
+                                    for c in range(7):
+                                        if (b1 >> c) & 1:
+                                            target_x = cur_col * 14 + 7 + c
+                                            if draw_mode == 2:
+                                                px = color_screen.getpixel((target_x, y))
+                                                color_screen.putpixel((target_x, y), (255 - px[0], 255 - px[1], 255 - px[2]))
+                                            else:
+                                                color_screen.putpixel((target_x, y), c_rgb)
+                            else: # Colors (Green, Violet, Orange, Blue) with stroke expansion
+                                color_mask = 0x2AAA if cur_color in (1, 5) else 0x1555
+                                for r in range(16):
+                                    b0 = glyph[r * 2] & 0x7F
+                                    b1 = glyph[r * 2 + 1] & 0x7F
+                                    val = b0 | (b1 << 7)
+                                    if val:
+                                        exp = val | (val << 1) | (val >> 1)
+                                        c_val = (exp & color_mask) & 0x3FFF
+                                        y = cur_row * 16 + r
+                                        for c in range(14):
+                                            if (c_val >> c) & 1:
+                                                target_x = cur_col * 14 + c
+                                                if draw_mode == 2:
+                                                    px = color_screen.getpixel((target_x, y))
+                                                    color_screen.putpixel((target_x, y), (255 - px[0], 255 - px[1], 255 - px[2]))
+                                                else:
+                                                    color_screen.putpixel((target_x, y), c_rgb)
                         cur_col += 1
                         if cur_col >= 20:
                             cur_col = 0

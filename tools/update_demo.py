@@ -16,6 +16,7 @@ from ac_tool import put_file
 
 DEMO_LINES_DATA = [
     (10, 'REM MULTI-FONT & COLOR DEMO'),
+    (15, '& "/clear"'),
     (20, '[F:galmuri14][C:white]', '안녕하세요애플투'),
     (30, '[F:neodgm][C:green]', '도스타자방이야기'),
     (40, '[F:sam3k][C:orange]', '三國志英雄崛起'),
