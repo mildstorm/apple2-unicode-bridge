@@ -516,6 +516,90 @@ Programs utilizing multiple fonts can be baked directly into the floppy disk ima
 
 ---
 
+## 🌈 Apple II HGR Color Support & Drawing Modes (Overlay / Replace / XOR)
+
+Maximize the visual power of Apple II High-Resolution Graphics (280×192) by bringing **vibrant typography colors** and **overlay drawing over existing graphic scenes** without erasing the background!
+
+### 1. Apple II HGR Color System
+
+The Apple II generates color on color composite monitors through artifact coloring (NTSC subcarrier phase timing) governed by even/odd pixel column placement and high-bit palette selection (`$80`). The bridge driver and streaming server automatically handle column bit-pattern transformations ($2A, $55, $D5, $AA) so you can simply select colors by name or digit:
+
+| Color Code | Name (Case-insensitive) | Aliases | Palette & Characteristics |
+| :---: | :--- | :--- | :--- |
+| **0** (or 4) | **`black`** | `bk` | Black (Palette 0 / 1) |
+| **1** | **`green`** | `g` | Green (Palette 0, Bit 7 = 0) |
+| **2** | **`violet`** | `purple`, `p`, `v` | Violet / Purple (Palette 0, Bit 7 = 0) |
+| **3** (or 7) | **`white`** | `w` | White (Palette 0 / 1, All bits ON) |
+| **5** | **`orange`** | `red`, `o`, `r` | Orange (Palette 1, Bit 7 = 1) |
+| **6** | **`blue`** | `cyan`, `b`, `c` | Blue / Cyan (Palette 1, Bit 7 = 1) |
+
+*Applesoft BASIC's standard `HCOLOR=x` command is also automatically synced whenever an `&` command executes.*
+
+---
+
+### 2. Drawing Modes (Replace vs Overlay vs XOR)
+
+| Drawing Mode | ID | 6502 Op | Behavior & Recommended Use Case |
+| :--- | :---: | :---: | :--- |
+| **`replace`** | `0` | `STA` | **Default**. Clears the 14×16 character bounding cell to black before rendering the glyph. Delivers crisp, maximum legibility. |
+| **`overlay`** | `1` | `ORA` | **Preserves background graphics**. Bitwise ORs glyph strokes directly over the existing HGR screen without erasing grids, charts, maps, or background game art. |
+| **`xor`** | `2` | `EOR` | **Inverts background pixels**. Bitwise XORs character bitmap with underlying screen pixels. Ideal for inverted selection cursors and highlights. |
+
+---
+
+### 3. Command Syntax & Inline Style Tags
+
+#### (1) Global Slash Commands
+Set drawing attributes across the entire line:
+```basic
+10 & "/color green"      : REM Sets font color (green, violet, white, orange, blue, 0~7)
+20 & "/mode overlay"      : REM Sets draw mode to overlay (overlay, replace, xor, 0, 1, 2)
+30 & "/overlay"           : REM Shortcut for /mode overlay
+40 & "/replace"           : REM Shortcut for /mode replace
+50 & "/xor"               : REM Shortcut for /mode xor
+60 & "/pos 2 5"           : REM Moves cursor to Column 2 (28px), Row 5 (80px)
+70 & "/clear"             : REM Clears HGR screen and resets cursor to (0,0)
+```
+
+#### (2) Inline Style Tags
+Switch color or drawing mode mid-sentence without line breaks:
+* **Color Tags**: `[C:green]`, `[C:orange]`, `[C:blue]`, `[C:violet]`, `[C:white]`, `[COLOR:1]`, `\C:1\`
+* **Mode Tags**: `[M:overlay]`, `[M:replace]`, `[M:xor]`, `[MODE:1]`, `\M:overlay\`
+
+```basic
+10 & "[C:orange][M:overlay]\KWARNING!\N [C:green]System online.\N"
+20 & "[C:white]\KClear box: \N[M:replace][C:blue]\KThis text clears background\N"
+```
+
+---
+
+### 4. Live Demonstration: `RUN COLORDEMO`
+
+The included `COLORDEMO` program draws a full-screen HGR background grid and prints multi-colored Korean text in overlay mode, followed by replace and XOR modes:
+
+![Verified Color & Overlay Standalone Demo](docs/images/verified_standalone_colordemo.png)
+
+```basic
+10 REM *** HGR COLOR & OVERLAY DEMO ***
+20 HGR : HCOLOR=3
+30 FOR I = 0 TO 191 STEP 16: HPLOT 0,I TO 279,I: NEXT I
+40 FOR I = 0 TO 279 STEP 28: HPLOT I,0 TO I,191: NEXT I
+50 & "/pos 0 0"
+60 & "/overlay"
+70 & "[C:green]\K녹색 오버레이 글씨\N"
+80 & "[C:violet]\K보라색 유니코드 글꼴\N"
+90 & "[C:orange]\K오렌지색 배경 위 글자\N"
+100 & "[C:blue]\K푸른색 그래픽 오버레이\N"
+110 & "[C:white]\K선명한 백색 텍스트\N"
+120 & "/replace"
+130 & "[C:white]\K리플레이스는 배경 지움\N"
+140 & "/xor"
+150 & "[C:white]\K반전 엑스오어 모드\N"
+160 END
+```
+
+---
+
 ## 🤝 Contributing
 
 Contributions to `apple2-unicode-bridge` are warmly welcomed! Areas of active exploration:

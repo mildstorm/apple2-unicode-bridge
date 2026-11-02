@@ -41,6 +41,10 @@ KEY_1           = $1A
 KEY_2           = $1B
 CUR_COL         = $1C
 CUR_ROW         = $1D
+DRAW_MODE       = $1E
+CUR_COLOR       = $1F
+HCOLOR_FLG      = $E4
+HGR_HAS_DRAWN   = $F9
 
 INIT
     LDA #$00
@@ -55,6 +59,12 @@ INIT
     STA BUF_TAIL
     STA CUR_COL
     STA CUR_ROW
+    STA DRAW_MODE
+    STA HGR_HAS_DRAWN
+    LDA #$03
+    STA CUR_COLOR
+    LDA #$7F
+    STA HCOLOR_FLG
 
     LDA #$4C
     STA AMP_VECTOR
@@ -71,6 +81,8 @@ INIT
     STA DOS_KSW_HI
 
     JSR CLEAR_HGR
+    LDA #$00
+    STA HGR_HAS_DRAWN
     RTS
 
 AMPERSAND_HANDLER
@@ -88,6 +100,9 @@ RUN_AMP_STRING
     STA HIRES
     STA PAGE1
     STA MIXSET
+
+    ; Sync CUR_COLOR from Applesoft HCOLOR ($E4) if user called HCOLOR=
+    JSR SYNC_HCOLOR
 
     ; Check if Cache is valid at $6000 ('H','G')
     LDA $6000
@@ -129,6 +144,20 @@ SEND_STR_END
 AMP_RTS
     RTS
 
+SYNC_HCOLOR
+    LDY HCOLOR_FLG
+    LDX #7
+SYNC_HCOL_LOOP
+    LDA COLOR_MASK_0,X
+    CMP HCOLOR_FLG
+    BEQ SYNC_HCOL_FOUND
+    DEX
+    BPL SYNC_HCOL_LOOP
+    RTS
+SYNC_HCOL_FOUND
+    STX CUR_COLOR
+    RTS
+
 ; --- Offline Cache Renderer ---
 
 GOTO_OFFLINE_DONE
@@ -137,9 +166,25 @@ GOTO_OFFLINE_DONE
 GOTO_HEX_MODE_END
     JMP HEX_MODE_END
 
+GOTO_OFFLINE_LOOP
+    JMP OFFLINE_LOOP
+
+GOTO_HANDLE_ESCAPE
+    JMP HANDLE_ESCAPE
+
 RUN_OFFLINE_STRING
-    LDA CUR_ROW
-    ORA CUR_COL
+    ; Check if string starts with '/' command
+    LDY #1
+    LDA (TXTPTR_LO),Y
+    CMP #'/'
+    BNE OFFLINE_CHECK_INIT_CLR
+    JMP HANDLE_SLASH_CMD
+
+OFFLINE_CHECK_INIT_CLR
+    LDA HGR_HAS_DRAWN
+    BNE OFFLINE_LOOP
+    INC HGR_HAS_DRAWN
+    LDA DRAW_MODE
     BNE OFFLINE_LOOP
     JSR CLEAR_HGR
 
@@ -154,11 +199,18 @@ FETCH_OFFLINE
     CMP #'"'
     BEQ GOTO_OFFLINE_DONE
     CMP #'\\'
-    BEQ HANDLE_ESCAPE
+    BEQ GOTO_HANDLE_ESCAPE
+    CMP #'['
+    BEQ HANDLE_BRACKET_TAG
 
     ; Normal ASCII character (Space or Latin)
     CMP #$20
     BNE SKIP_CHAR
+    ; In Replace mode (DRAW_MODE == 0), clear 14x16 space cell
+    LDA DRAW_MODE
+    BNE SPACE_ADV_ONLY
+    JSR CLEAR_CELL_14X16
+SPACE_ADV_ONLY
     LDA CUR_COL
     CLC
     ADC #2
@@ -176,6 +228,376 @@ FETCH_OFFLINE
 SKIP_CHAR
     JMP OFFLINE_LOOP
 
+HANDLE_BRACKET_TAG
+    ; Inspect inside [...] for [C-tag], [M-tag], [F-tag], etc.
+    INC TXTPTR_LO
+    BNE BRK_ADV_1
+    INC TXTPTR_HI
+BRK_ADV_1
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    BEQ GOTO_OFFLINE_DONE_2
+    CMP #'"'
+    BEQ GOTO_OFFLINE_DONE_2
+    ORA #$20            ; lowercase
+    CMP #'c'
+    BEQ PARSE_TAG_COLOR
+    CMP #'m'
+    BEQ PARSE_TAG_MODE
+SKIP_TO_BRACKET_END
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    BEQ GOTO_OFFLINE_DONE_2
+    CMP #'"'
+    BEQ GOTO_OFFLINE_DONE_2
+    CMP #']'
+    BEQ GOTO_OFFLINE_LOOP_2
+    INC TXTPTR_LO
+    BNE SKIP_TO_BRACKET_END
+    INC TXTPTR_HI
+    JMP SKIP_TO_BRACKET_END
+
+GOTO_OFFLINE_DONE_2
+    JMP OFFLINE_DONE
+
+GOTO_OFFLINE_LOOP_2
+    JMP OFFLINE_LOOP
+
+PARSE_TAG_COLOR
+    ; Advance until colon
+FIND_COL_COLON
+    INC TXTPTR_LO
+    BNE FCC_1
+    INC TXTPTR_HI
+FCC_1
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    BEQ GOTO_OFFLINE_DONE_2
+    CMP #'"'
+    BEQ GOTO_OFFLINE_DONE_2
+    CMP #']'
+    BEQ GOTO_OFFLINE_LOOP_2
+    CMP #58
+    BNE FIND_COL_COLON
+    ; Next char is color name or digit 0..7
+    INC TXTPTR_LO
+    BNE FCC_2
+    INC TXTPTR_HI
+FCC_2
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    JSR PARSE_COLOR_CHAR
+    JMP SKIP_TO_BRACKET_END
+
+PARSE_TAG_MODE
+    ; Advance until colon
+FIND_MOD_COLON
+    INC TXTPTR_LO
+    BNE FMC_1
+    INC TXTPTR_HI
+FMC_1
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    BEQ GOTO_OFFLINE_DONE_2
+    CMP #'"'
+    BEQ GOTO_OFFLINE_DONE_2
+    CMP #']'
+    BEQ GOTO_OFFLINE_LOOP_2
+    CMP #58
+    BNE FIND_MOD_COLON
+    INC TXTPTR_LO
+    BNE FMC_2
+    INC TXTPTR_HI
+FMC_2
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    JSR PARSE_MODE_CHAR
+    JMP SKIP_TO_BRACKET_END
+
+PARSE_COLOR_CHAR
+    CMP #'0'
+    BCC PCC_NAME
+    CMP #'8'
+    BCS PCC_NAME
+    SEC
+    SBC #'0'
+    JMP SET_CUR_COLOR_A
+PCC_NAME
+    ORA #$20
+    CMP #'g'            ; green (1)
+    BNE PCC_N1
+    LDA #1
+    JMP SET_CUR_COLOR_A
+PCC_N1
+    CMP #'v'            ; violet / purple (2)
+    BEQ PCC_VIO
+    CMP #'p'            ; purple / magenta (2)
+    BNE PCC_N2
+PCC_VIO
+    LDA #2
+    JMP SET_CUR_COLOR_A
+PCC_N2
+    CMP #'w'            ; white (3)
+    BNE PCC_N3
+    LDA #3
+    JMP SET_CUR_COLOR_A
+PCC_N3
+    CMP #'o'            ; orange / red (5)
+    BEQ PCC_ORG
+    CMP #'r'            ; red (5)
+    BNE PCC_N4
+PCC_ORG
+    LDA #5
+    JMP SET_CUR_COLOR_A
+PCC_N4
+    CMP #'b'            ; blue / cyan (6)
+    BNE PCC_N5
+    LDY #1
+    LDA (TXTPTR_LO),Y
+    ORA #$20
+    CMP #'l'            ; bl... check 3rd char 'a' (black) vs 'u' (blue)
+    BNE PCC_BLU
+    INY
+    LDA (TXTPTR_LO),Y
+    ORA #$20
+    CMP #'a'
+    BNE PCC_BLU
+    LDA #0              ; black (0)
+    JMP SET_CUR_COLOR_A
+PCC_BLU
+    LDA #6              ; blue (6)
+    JMP SET_CUR_COLOR_A
+PCC_N5
+    CMP #'c'            ; cyan (6)
+    BNE PCC_RET
+    LDA #6
+SET_CUR_COLOR_A
+    AND #$07
+    STA CUR_COLOR
+    TAX
+    LDA COLOR_MASK_0,X
+    STA HCOLOR_FLG
+PCC_RET
+    RTS
+
+PARSE_MODE_CHAR
+    CMP #'0'
+    BNE PMC_1
+    LDA #0
+    STA DRAW_MODE
+    RTS
+PMC_1
+    CMP #'1'
+    BNE PMC_2
+    LDA #1
+    STA DRAW_MODE
+    RTS
+PMC_2
+    CMP #'2'
+    BNE PMC_NAME
+    LDA #2
+    STA DRAW_MODE
+    RTS
+PMC_NAME
+    ORA #$20
+    CMP #'r'            ; replace
+    BNE PMC_N1
+    LDA #0
+    STA DRAW_MODE
+    RTS
+PMC_N1
+    CMP #'o'            ; overlay / or
+    BNE PMC_N2
+    LDA #1
+    STA DRAW_MODE
+    RTS
+PMC_N2
+    CMP #'x'            ; xor
+    BNE PMC_RET
+    LDA #2
+    STA DRAW_MODE
+PMC_RET
+    RTS
+
+HANDLE_SLASH_CMD
+    ; Advance past '/'
+    INC TXTPTR_LO
+    BNE HSC_1
+    INC TXTPTR_HI
+HSC_1
+    INC TXTPTR_LO
+    BNE HSC_2
+    INC TXTPTR_HI
+HSC_2
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    ORA #$20
+    CMP #'c'            ; /clear or /color or /pos?
+    BNE HSC_CHECK_M
+    INY
+    LDA (TXTPTR_LO),Y
+    ORA #$20
+    CMP #'l'            ; /clear
+    BNE HSC_COLOR
+    JSR CLEAR_HGR
+    JMP SKIP_SLASH_TO_END
+HSC_COLOR
+    ; /color <arg> or /c <arg>
+    JSR ADVANCE_TO_SPACE_ARG
+    BCC SKIP_SLASH_TO_END
+    JSR PARSE_COLOR_CHAR
+    JMP SKIP_SLASH_TO_END
+
+HSC_CHECK_M
+    CMP #'m'            ; /mode <arg>
+    BNE HSC_CHECK_O
+    JSR ADVANCE_TO_SPACE_ARG
+    BCC SKIP_SLASH_TO_END
+    JSR PARSE_MODE_CHAR
+    JMP SKIP_SLASH_TO_END
+
+HSC_CHECK_O
+    CMP #'o'            ; /overlay
+    BNE HSC_CHECK_R
+    LDA #1
+    STA DRAW_MODE
+    JMP SKIP_SLASH_TO_END
+
+HSC_CHECK_R
+    CMP #'r'            ; /replace
+    BNE HSC_CHECK_X
+    LDA #0
+    STA DRAW_MODE
+    JMP SKIP_SLASH_TO_END
+
+HSC_CHECK_X
+    CMP #'x'            ; /xor
+    BNE HSC_CHECK_P
+    LDA #2
+    STA DRAW_MODE
+    JMP SKIP_SLASH_TO_END
+
+HSC_CHECK_P
+    CMP #'p'            ; /pos col row
+    BNE SKIP_SLASH_TO_END
+    JSR ADVANCE_TO_SPACE_ARG
+    BCC SKIP_SLASH_TO_END
+    JSR PARSE_DEC_NUM
+    ASL                 ; col (0..19) * 2 -> byte col (0..38)
+    STA CUR_COL
+    JSR ADVANCE_TO_SPACE_ARG
+    BCC SKIP_SLASH_TO_END
+    JSR PARSE_DEC_NUM
+    STA CUR_ROW
+
+SKIP_SLASH_TO_END
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    BEQ SLASH_CMD_RTS
+    CMP #'"'
+    BEQ SLASH_CMD_END_Q
+    INC TXTPTR_LO
+    BNE SKIP_SLASH_TO_END
+    INC TXTPTR_HI
+    JMP SKIP_SLASH_TO_END
+SLASH_CMD_END_Q
+    JSR CHRGET
+SLASH_CMD_RTS
+    RTS
+
+ADVANCE_TO_SPACE_ARG
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    BEQ ATSA_NONE
+    CMP #'"'
+    BEQ ATSA_NONE
+    CMP #' '
+    BEQ ATSA_SKIP_SPACES
+    INC TXTPTR_LO
+    BNE ADVANCE_TO_SPACE_ARG
+    INC TXTPTR_HI
+    JMP ADVANCE_TO_SPACE_ARG
+ATSA_SKIP_SPACES
+    INC TXTPTR_LO
+    BNE ATSA_SS1
+    INC TXTPTR_HI
+ATSA_SS1
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    BEQ ATSA_NONE
+    CMP #'"'
+    BEQ ATSA_NONE
+    CMP #' '
+    BEQ ATSA_SKIP_SPACES
+    SEC
+    RTS
+ATSA_NONE
+    CLC
+    RTS
+
+PARSE_DEC_NUM
+    LDA #0
+    STA TEMP_BYTE
+PDN_LOOP
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    CMP #'0'
+    BCC PDN_DONE
+    CMP #'9'+1
+    BCS PDN_DONE
+    SEC
+    SBC #'0'
+    PHA
+    LDA TEMP_BYTE
+    ASL
+    STA SEARCH_CNT
+    ASL
+    ASL
+    CLC
+    ADC SEARCH_CNT
+    STA TEMP_BYTE
+    PLA
+    CLC
+    ADC TEMP_BYTE
+    STA TEMP_BYTE
+    INC TXTPTR_LO
+    BNE PDN_LOOP
+    INC TXTPTR_HI
+    JMP PDN_LOOP
+PDN_DONE
+    LDA TEMP_BYTE
+    RTS
+
+CLEAR_CELL_14X16
+    LDA CUR_ROW
+    ASL
+    ASL
+    ASL
+    ASL
+    STA START_Y
+    LDX #0
+CC14_LOOP
+    TXA
+    CLC
+    ADC START_Y
+    TAY
+    LDA HGR_LO,Y
+    CLC
+    ADC CUR_COL
+    STA PTR_LO
+    LDA HGR_HI,Y
+    ADC #0
+    STA PTR_HI
+    LDA #0
+    LDY #0
+    STA (PTR_LO),Y
+    INY
+    STA (PTR_LO),Y
+    INX
+    CPX #16
+    BNE CC14_LOOP
+    RTS
+
 HANDLE_ESCAPE
     INC TXTPTR_LO
     BNE ESC_ADV_1
@@ -185,7 +607,68 @@ ESC_ADV_1
     LDA (TXTPTR_LO),Y
     CMP #'K'
     BEQ HEX_MODE_START
+    CMP #'C'
+    BEQ ESC_COLOR_TAG
+    CMP #'M'
+    BEQ ESC_MODE_TAG
     JMP OFFLINE_LOOP
+
+ESC_COLOR_TAG
+    INC TXTPTR_LO
+    BNE ECT_1
+    INC TXTPTR_HI
+ECT_1
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    CMP #58
+    BNE ECT_PARSE
+    INC TXTPTR_LO
+    BNE ECT_2
+    INC TXTPTR_HI
+ECT_2
+    LDY #0
+    LDA (TXTPTR_LO),Y
+ECT_PARSE
+    JSR PARSE_COLOR_CHAR
+    JMP SKIP_TO_BACKSLASH
+
+ESC_MODE_TAG
+    INC TXTPTR_LO
+    BNE EMT_1
+    INC TXTPTR_HI
+EMT_1
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    CMP #58
+    BNE EMT_PARSE
+    INC TXTPTR_LO
+    BNE EMT_2
+    INC TXTPTR_HI
+EMT_2
+    LDY #0
+    LDA (TXTPTR_LO),Y
+EMT_PARSE
+    JSR PARSE_MODE_CHAR
+SKIP_TO_BACKSLASH
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    BEQ GOTO_OFFLINE_DONE_3
+    CMP #'"'
+    BEQ GOTO_OFFLINE_DONE_3
+    CMP #'\\'
+    BEQ ESC_TAG_DONE
+    INC TXTPTR_LO
+    BNE SKIP_TO_BACKSLASH
+    INC TXTPTR_HI
+    JMP SKIP_TO_BACKSLASH
+ESC_TAG_DONE
+    JMP OFFLINE_LOOP
+
+GOTO_OFFLINE_DONE_3
+    JMP OFFLINE_DONE
+
+GOTO_HEX_MODE_END_3
+    JMP HEX_MODE_END
 
 HEX_MODE_START
 HEX_CHAR_LOOP
@@ -195,11 +678,11 @@ HEX_CHAR_LOOP
 HEX_ADV_1
     LDY #0
     LDA (TXTPTR_LO),Y
-    BEQ GOTO_OFFLINE_DONE
+    BEQ GOTO_OFFLINE_DONE_3
     CMP #'"'
-    BEQ GOTO_OFFLINE_DONE
+    BEQ GOTO_OFFLINE_DONE_3
     CMP #'\\'
-    BEQ GOTO_HEX_MODE_END
+    BEQ GOTO_HEX_MODE_END_3
 
     ; Parse Byte 0
     JSR CHAR_TO_NIBBLE
@@ -332,7 +815,9 @@ NIBBLE_ZERO
 
 DRAW_CACHED_GLYPH
     LDA $6002
-    BEQ DRAW_GLYPH_RET
+    BNE DCG_HAS_ITEMS
+    RTS
+DCG_HAS_ITEMS
     STA SEARCH_CNT
 
     LDA #<$6004
@@ -400,20 +885,85 @@ RENDER_CACHE_ROWS
     ASL
     TAY
     LDA (SRC_LO),Y
+    STA TEMP_BYTE
+    LDY CUR_COLOR
+    LDA COLOR_MASK_0,Y
+    AND #$7F
+    AND TEMP_BYTE
+    STA TEMP_BYTE
+    LDA COLOR_MASK_0,Y
+    AND #$80
+    ORA TEMP_BYTE
+    STA TEMP_BYTE
+
     LDY #0
+    LDA DRAW_MODE
+    BEQ CACHE_STORE_B0
+    CMP #1
+    BEQ CACHE_OR_B0
+    ; XOR mode (DRAW_MODE == 2)
+    LDA TEMP_BYTE
+    AND #$7F
+    EOR (PTR_LO),Y
+    STA (PTR_LO),Y
+    JMP CACHE_DO_B1
+CACHE_OR_B0
+    ; Overlay mode (DRAW_MODE == 1)
+    LDA (PTR_LO),Y
+    AND #$7F
+    ORA TEMP_BYTE
+    STA (PTR_LO),Y
+    JMP CACHE_DO_B1
+CACHE_STORE_B0
+    ; Replace mode (DRAW_MODE == 0)
+    LDA TEMP_BYTE
     STA (PTR_LO),Y
 
+CACHE_DO_B1
     TXA
     ASL
     TAY
     INY
     LDA (SRC_LO),Y
+    STA TEMP_BYTE
+    LDY CUR_COLOR
+    LDA COLOR_MASK_1,Y
+    AND #$7F
+    AND TEMP_BYTE
+    STA TEMP_BYTE
+    LDA COLOR_MASK_1,Y
+    AND #$80
+    ORA TEMP_BYTE
+    STA TEMP_BYTE
+
     LDY #1
+    LDA DRAW_MODE
+    BEQ CACHE_STORE_B1
+    CMP #1
+    BEQ CACHE_OR_B1
+    ; XOR mode (DRAW_MODE == 2)
+    LDA TEMP_BYTE
+    AND #$7F
+    EOR (PTR_LO),Y
+    STA (PTR_LO),Y
+    JMP CACHE_NEXT_ROW
+CACHE_OR_B1
+    ; Overlay mode (DRAW_MODE == 1)
+    LDA (PTR_LO),Y
+    AND #$7F
+    ORA TEMP_BYTE
+    STA (PTR_LO),Y
+    JMP CACHE_NEXT_ROW
+CACHE_STORE_B1
+    ; Replace mode (DRAW_MODE == 0)
+    LDA TEMP_BYTE
     STA (PTR_LO),Y
 
+CACHE_NEXT_ROW
     INX
     CPX #16
-    BNE RENDER_CACHE_ROWS
+    BEQ DRAW_GLYPH_RET
+    JMP RENDER_CACHE_ROWS
 
 DRAW_GLYPH_RET
     RTS
@@ -430,6 +980,8 @@ PROCESS_PC_DRAWING
     BEQ EXEC_CLEAR
     CMP #$84
     BEQ EXEC_SCROLL
+    CMP #$88
+    BEQ EXEC_SET_MODE
     JMP PROCESS_PC_DRAWING
 
 EXEC_DRAW
@@ -442,6 +994,11 @@ EXEC_CLEAR
 
 EXEC_SCROLL
     JSR SCROLL_HGR
+    JMP PROCESS_PC_DRAWING
+
+EXEC_SET_MODE
+    JSR RECV_BYTE
+    STA DRAW_MODE
     JMP PROCESS_PC_DRAWING
 
 DRAWING_DONE
@@ -475,6 +1032,7 @@ READ_KBD
     LDA #0
     STA CUR_COL
     STA CUR_ROW
+    STA HGR_HAS_DRAWN
     LDA #$8D
     RTS
 
@@ -576,6 +1134,8 @@ CHECK_RX
     BEQ EXIT_TERM
     CMP #$84
     BEQ TERM_SCROLL
+    CMP #$88
+    BEQ TERM_SET_MODE
     JMP TERM_LOOP
 
 TERM_DRAW
@@ -590,6 +1150,11 @@ TERM_SCROLL
     JSR SCROLL_HGR
     JMP TERM_LOOP
 
+TERM_SET_MODE
+    JSR RECV_BYTE
+    STA DRAW_MODE
+    JMP TERM_LOOP
+
 EXIT_TERM
     STA TXTSET
     JSR CHRGET
@@ -597,6 +1162,7 @@ EXIT_TERM
 
 DRAW_ONE_GLYPH
     JSR RECV_BYTE
+    ASL
     STA COL_OFFSET
     JSR RECV_BYTE
     ASL
@@ -620,19 +1186,66 @@ GLYPH_ROW_LOOP
     STA PTR_HI
 
     JSR RECV_BYTE
+    STA TEMP_BYTE
     LDY #$00
+    LDA DRAW_MODE
+    BEQ DOG_STORE_B0
+    CMP #1
+    BEQ DOG_OR_B0
+    ; XOR mode
+    LDA TEMP_BYTE
+    AND #$7F
+    EOR (PTR_LO),Y
+    STA (PTR_LO),Y
+    JMP DOG_DO_B1
+DOG_OR_B0
+    ; Overlay mode
+    LDA (PTR_LO),Y
+    AND #$7F
+    ORA TEMP_BYTE
+    STA (PTR_LO),Y
+    JMP DOG_DO_B1
+DOG_STORE_B0
+    ; Replace mode
+    LDA TEMP_BYTE
     STA (PTR_LO),Y
 
+DOG_DO_B1
     JSR RECV_BYTE
-    INY
+    STA TEMP_BYTE
+    LDY #$01
+    LDA DRAW_MODE
+    BEQ DOG_STORE_B1
+    CMP #1
+    BEQ DOG_OR_B1
+    ; XOR mode
+    LDA TEMP_BYTE
+    AND #$7F
+    EOR (PTR_LO),Y
+    STA (PTR_LO),Y
+    JMP DOG_NEXT_ROW
+DOG_OR_B1
+    ; Overlay mode
+    LDA (PTR_LO),Y
+    AND #$7F
+    ORA TEMP_BYTE
+    STA (PTR_LO),Y
+    JMP DOG_NEXT_ROW
+DOG_STORE_B1
+    ; Replace mode
+    LDA TEMP_BYTE
     STA (PTR_LO),Y
 
+DOG_NEXT_ROW
     INX
     CPX #16
     BNE GLYPH_ROW_LOOP
     RTS
 
 CLEAR_HGR
+    LDA #$00
+    STA CUR_COL
+    STA CUR_ROW
     LDA #$20
     STA PTR_HI
     LDA #$00
@@ -715,6 +1328,8 @@ SAVE_Y     .byte 0
 SAVE_CNT   .byte 0
 BUF_HEAD   .byte 0
 BUF_TAIL   .byte 0
+COLOR_MASK_0 .byte $00, $2A, $55, $7F, $80, $AA, $D5, $FF
+COLOR_MASK_1 .byte $00, $55, $2A, $7F, $80, $D5, $AA, $FF
 BUF_START  .dsb 256, 0
 
 HGR_LO

@@ -157,25 +157,130 @@ BUNDLED_FONT_INFO = {
 }
 
 FONT_TAG_PATTERN = re.compile(r'\[(?:F|FONT):([^\]]+)\]|\\(?:F|f):?([^\\/]+)\\')
+STYLE_TAG_PATTERN = re.compile(
+    r'\[(F|FONT|C|COLOR|M|MODE):([^\]]+)\]|\\(F|f|C|c|M|m):?([^\\/]+)\\',
+    re.IGNORECASE
+)
+
+# Apple II HGR Color Masks (HCOLOR 0..7)
+# Each entry is (mask_even_byte0, mask_odd_byte1)
+HGR_COLOR_MASKS = {
+    0: (0x00, 0x00), # Black 1
+    1: (0x2A, 0x55), # Green
+    2: (0x55, 0x2A), # Violet / Purple
+    3: (0x7F, 0x7F), # White 1
+    4: (0x80, 0x80), # Black 2
+    5: (0xAA, 0xD5), # Orange / Red
+    6: (0xD5, 0xAA), # Blue / Cyan
+    7: (0xFF, 0xFF), # White 2
+}
+
+HGR_COLOR_ALIASES = {
+    '0': 0, 'black': 0, 'blk': 0, 'black1': 0, '검정': 0,
+    '1': 1, 'green': 1, 'grn': 1, 'g': 1, '초록': 1, '녹색': 1,
+    '2': 2, 'violet': 2, 'purple': 2, 'magenta': 2, 'vio': 2, 'pur': 2, 'v': 2, 'p': 2, '보라': 2, '자주': 2,
+    '3': 3, 'white': 3, 'wht': 3, 'w': 3, 'white1': 3, '흰색': 3, '백색': 3,
+    '4': 4, 'black2': 4,
+    '5': 5, 'orange': 5, 'red': 5, 'org': 5, 'o': 5, 'r': 5, '주황': 5, '빨강': 5, '적색': 5,
+    '6': 6, 'blue': 6, 'cyan': 6, 'blu': 6, 'b': 6, 'c': 6, '파랑': 6, '청색': 6, '하늘': 6,
+    '7': 7, 'white2': 7,
+}
+
+DRAW_MODE_ALIASES = {
+    '0': 0, 'replace': 0, 'rep': 0, 'r': 0, 'normal': 0, '덮어쓰기': 0,
+    '1': 1, 'overlay': 1, 'over': 1, 'or': 1, 'o': 1, 'transparent': 1, '오버레이': 1, '겹치기': 1,
+    '2': 2, 'xor': 2, 'invert': 2, 'x': 2, '반전': 2,
+}
+
+def parse_hgr_color(color_spec, default=3):
+    """Resolves color index (0..7) or name ('green', 'orange', 'blue', etc.) to HCOLOR 0..7."""
+    if color_spec is None:
+        return default
+    if isinstance(color_spec, int):
+        return color_spec & 7
+    key = str(color_spec).strip().lower()
+    if key in HGR_COLOR_ALIASES:
+        return HGR_COLOR_ALIASES[key]
+    if key.isdigit():
+        return int(key) & 7
+    return default
+
+def parse_draw_mode(mode_spec, default=0):
+    """Resolves draw mode ('replace'/0, 'overlay'/1, 'xor'/2) to integer 0, 1, or 2."""
+    if mode_spec is None:
+        return default
+    if isinstance(mode_spec, int):
+        return mode_spec if mode_spec in (0, 1, 2) else default
+    key = str(mode_spec).strip().lower()
+    if key in DRAW_MODE_ALIASES:
+        return DRAW_MODE_ALIASES[key]
+    return default
+
+def apply_color_to_glyph(glyph_32: bytes, color_idx: int) -> bytes:
+    """Applies Apple II HGR color bit-mask and high-bit palette to a 32-byte (14x16) glyph."""
+    c = parse_hgr_color(color_idx, default=3)
+    if c == 3:
+        return glyph_32
+    m0, m1 = HGR_COLOR_MASKS[c]
+    hb0, hb1 = m0 & 0x80, m1 & 0x80
+    pat0, pat1 = m0 & 0x7F, m1 & 0x7F
+    out = bytearray(32)
+    for r in range(16):
+        b0 = glyph_32[r * 2] & 0x7F
+        b1 = glyph_32[r * 2 + 1] & 0x7F
+        out[r * 2]     = (b0 & pat0) | hb0
+        out[r * 2 + 1] = (b1 & pat1) | hb1
+    return bytes(out)
+
+def parse_styled_segments(text, default_font=None, default_color=None, default_mode=None):
+    """
+    Parses a string into segments of (font_id, color_id, mode_id, text_segment).
+    Recognizes inline tags:
+      - Font:  [F:neodgm], [FONT:1], \\F:myungjo\\, \\F1\\
+      - Color: [C:green], [COLOR:5], \\C:blue\\, \\C1\\
+      - Mode:  [M:overlay], [MODE:replace], [M:xor], \\M:overlay\\, \\M1\\
+    """
+    segments = []
+    last_idx = 0
+    cur_font = default_font
+    cur_color = default_color
+    cur_mode = default_mode
+
+    for m in STYLE_TAG_PATTERN.finditer(text):
+        seg = text[last_idx:m.start()]
+        if seg:
+            segments.append((cur_font, cur_color, cur_mode, seg))
+        tag_type = (m.group(1) or m.group(3)).strip().upper()
+        tag_val = (m.group(2) or m.group(4)).strip()
+        if tag_type.startswith('F'):
+            cur_font = tag_val
+        elif tag_type.startswith('C'):
+            cur_color = parse_hgr_color(tag_val, default=cur_color if cur_color is not None else 3)
+        elif tag_type.startswith('M'):
+            cur_mode = parse_draw_mode(tag_val, default=cur_mode if cur_mode is not None else 0)
+        last_idx = m.end()
+
+    seg = text[last_idx:]
+    if seg:
+        segments.append((cur_font, cur_color, cur_mode, seg))
+    return segments
 
 def parse_font_segments(text):
     """
     Parses a string into segments of (font_identifier_or_None, text_segment).
     Recognizes tags like [F:neodgm], [FONT:1], \\F:myungjo\\, \\F2\\ etc.
+    Strips any inline color/mode tags ([C:...], [M:...]) from text_segment so they are not rendered as literal text.
     """
-    segments = []
-    last_idx = 0
-    cur_font = None
-    for m in FONT_TAG_PATTERN.finditer(text):
-        seg = text[last_idx:m.start()]
-        if seg:
-            segments.append((cur_font, seg))
-        cur_font = (m.group(1) or m.group(2)).strip()
-        last_idx = m.end()
-    seg = text[last_idx:]
-    if seg:
-        segments.append((cur_font, seg))
-    return segments
+    styled = parse_styled_segments(text)
+    if not styled:
+        return []
+    merged = []
+    for f_id, _c_id, _m_id, seg in styled:
+        if merged and merged[-1][0] == f_id:
+            merged[-1] = (f_id, merged[-1][1] + seg)
+        else:
+            merged.append((f_id, seg))
+    return merged
 
 _RASTERIZER_CACHE = {}
 CUSTOM_FONT_ALIASES = {}
@@ -893,6 +998,7 @@ class HangulTerminalServer:
     CMD_SCROLL      = 0x84
     CMD_DRAW_7x16   = 0x85
     CMD_INPUT_BYTES = 0x86
+    CMD_SET_MODE    = 0x88
     CMD_DONE        = 0x00
 
     CMD_DRAW_GLYPH  = 0x81
@@ -900,7 +1006,7 @@ class HangulTerminalServer:
     MAX_COLS = 20
     MAX_ROWS = 12
 
-    def __init__(self, host="127.0.0.1", port=1977, com_port=None, font_path=None, font_size=None, y_offset=None, box_center=None, force_vector=False, use_popup=False):
+    def __init__(self, host="127.0.0.1", port=1977, com_port=None, font_path=None, font_size=None, y_offset=None, box_center=None, force_vector=False, use_popup=False, color=3, draw_mode="replace"):
         self.host = host
         self.port = port
         self.com_port = com_port
@@ -916,6 +1022,10 @@ class HangulTerminalServer:
         
         self.cur_col = 0
         self.cur_row = 0
+        self.current_color = parse_hgr_color(color, default=3)
+        self.current_mode = parse_draw_mode(draw_mode, default=0)
+        self._last_sent_mode = 0
+        self.has_drawn = False
         self.hangul_mode = True # Default Korean 2-bul-sik mode
         self.mode = "INIT"      # "TERMINAL" or "BASIC"
         self.utf8_mode = False
@@ -953,8 +1063,21 @@ class HangulTerminalServer:
             data = self.serial_io.read(1)
             return data[0] if data else None
 
-    def draw_glyph_at(self, col, row, glyph_bytes):
-        packet = bytearray([self.CMD_DRAW_GLYPH, col, row]) + glyph_bytes
+    def set_apple2_draw_mode(self, mode_val: int):
+        mode_val = parse_draw_mode(mode_val, default=0)
+        self.current_mode = mode_val
+        if self._last_sent_mode != mode_val:
+            self.send_raw(bytes([self.CMD_SET_MODE, mode_val]))
+            self._last_sent_mode = mode_val
+
+    def draw_glyph_at(self, col, row, glyph_bytes, color=None, mode=None):
+        eff_mode = self.current_mode if mode is None else parse_draw_mode(mode, default=self.current_mode)
+        if eff_mode != self._last_sent_mode:
+            self.send_raw(bytes([self.CMD_SET_MODE, eff_mode]))
+            self._last_sent_mode = eff_mode
+        eff_color = self.current_color if color is None else parse_hgr_color(color, default=self.current_color)
+        colored_glyph = apply_color_to_glyph(glyph_bytes, eff_color)
+        packet = bytearray([self.CMD_DRAW_GLYPH, col, row]) + colored_glyph
         self.send_raw(packet)
 
     def clear_screen(self):
@@ -1221,12 +1344,65 @@ class HangulTerminalServer:
 
                     if text.strip() == "/clear":
                         self.clear_screen()
+                        self.has_drawn = True
+                        self.send_raw(bytes([0x00]))
+                        continue
+
+                    stripped_cmd = text.strip()
+                    lower_cmd = stripped_cmd.lower()
+
+                    # Dedicated command: & "/color <name_or_0-7>" or & "/c <name_or_0-7>"
+                    if lower_cmd.startswith(("/color ", "/c ")):
+                        parts = stripped_cmd.split(maxsplit=1)
+                        if len(parts) > 1:
+                            self.current_color = parse_hgr_color(parts[1].strip(), default=self.current_color)
+                            print(f"[System] Active HGR color switched to: {self.current_color} ({parts[1].strip()})")
+                        self.send_raw(bytes([0x00]))
+                        continue
+
+                    # Dedicated command: & "/mode <replace|overlay|xor>" or & "/overlay" or & "/replace" or & "/xor"
+                    if lower_cmd.startswith("/mode "):
+                        parts = stripped_cmd.split(maxsplit=1)
+                        if len(parts) > 1:
+                            m_val = parse_draw_mode(parts[1].strip(), default=self.current_mode)
+                            self.set_apple2_draw_mode(m_val)
+                            print(f"[System] Draw mode switched to: {m_val} ({parts[1].strip()})")
+                        self.send_raw(bytes([0x00]))
+                        continue
+
+                    if lower_cmd in ("/overlay", "/over"):
+                        self.set_apple2_draw_mode(1)
+                        print("[System] Draw mode switched to: OVERLAY (1)")
+                        self.send_raw(bytes([0x00]))
+                        continue
+
+                    if lower_cmd in ("/replace", "/rep"):
+                        self.set_apple2_draw_mode(0)
+                        print("[System] Draw mode switched to: REPLACE (0)")
+                        self.send_raw(bytes([0x00]))
+                        continue
+
+                    if lower_cmd in ("/xor", "/invert"):
+                        self.set_apple2_draw_mode(2)
+                        print("[System] Draw mode switched to: XOR (2)")
+                        self.send_raw(bytes([0x00]))
+                        continue
+
+                    # Dedicated command: & "/pos <col> <row>"
+                    if lower_cmd.startswith("/pos "):
+                        parts = stripped_cmd.split()
+                        if len(parts) >= 3:
+                            try:
+                                self.cur_col = max(0, min(self.MAX_COLS - 1, int(parts[1])))
+                                self.cur_row = max(0, min(self.MAX_ROWS - 1, int(parts[2])))
+                                print(f"[System] Cursor positioned to col={self.cur_col}, row={self.cur_row}")
+                            except ValueError:
+                                pass
                         self.send_raw(bytes([0x00]))
                         continue
 
                     # Dedicated command: & "/font <name>" or & "/f <name>"
-                    stripped_cmd = text.strip()
-                    if stripped_cmd.lower().startswith(("/font ", "/f ")):
+                    if lower_cmd.startswith(("/font ", "/f ")):
                         parts = stripped_cmd.split(maxsplit=1)
                         if len(parts) > 1:
                             target_f = parts[1].strip()
@@ -1238,7 +1414,7 @@ class HangulTerminalServer:
                         continue
 
                     # Dedicated command: & "/font-add <slot> <font>" or & "/alias <slot> <font>"
-                    if stripped_cmd.lower().startswith(("/font-add ", "/alias ")):
+                    if lower_cmd.startswith(("/font-add ", "/alias ")):
                         parts = stripped_cmd.split()
                         if len(parts) >= 3:
                             font_add(parts[1].strip(), parts[2].strip())
@@ -1246,7 +1422,7 @@ class HangulTerminalServer:
                         continue
 
                     # Dedicated command: & "/font-del <slot>" or & "/font-remove <slot>" or & "/unalias <slot>"
-                    if stripped_cmd.lower().startswith(("/font-del ", "/font-remove ", "/unalias ")):
+                    if lower_cmd.startswith(("/font-del ", "/font-remove ", "/unalias ")):
                         parts = stripped_cmd.split()
                         if len(parts) >= 2:
                             font_del(parts[1].strip())
@@ -1254,23 +1430,38 @@ class HangulTerminalServer:
                         continue
 
                     # Dedicated command: & "/font-clear"
-                    if stripped_cmd.lower() == "/font-clear":
+                    if lower_cmd == "/font-clear":
                         font_clear()
                         self.send_raw(bytes([0x00]))
                         continue
 
-                    if self.cur_col == 0 and self.cur_row == 0:
-                        self.clear_screen()
+                    if not self.has_drawn:
+                        self.has_drawn = True
+                        if self.current_mode == 0 and self.cur_col == 0 and self.cur_row == 0:
+                            self.clear_screen()
 
-                    segments = parse_font_segments(text)
-                    for font_tag, seg_text in segments:
+                    segments = parse_styled_segments(
+                        text,
+                        default_font=None,
+                        default_color=self.current_color,
+                        default_mode=self.current_mode
+                    )
+                    for font_tag, color_val, mode_val, seg_text in segments:
                         active_r = get_font_rasterizer(font_tag, self.current_rasterizer) if font_tag else self.current_rasterizer
+                        if color_val is not None:
+                            self.current_color = color_val
+                        if mode_val is not None:
+                            self.set_apple2_draw_mode(mode_val)
                         for ch in seg_text:
                             if ch == '\n' or ch == '\r':
                                 self.newline()
                                 continue
+                            if ch == ' ' and self.current_mode != 0:
+                                # In overlay / xor mode, space only advances cursor without touching background
+                                self.advance_cursor()
+                                continue
                             glyph = active_r.rasterize(ch)
-                            self.draw_glyph_at(self.cur_col, self.cur_row, glyph)
+                            self.draw_glyph_at(self.cur_col, self.cur_row, glyph, color=self.current_color, mode=self.current_mode)
                             self.advance_cursor()
                     self.newline()
                     self.send_raw(bytes([0x00])) # Send CMD_DONE
@@ -1396,6 +1587,8 @@ if __name__ == "__main__":
     parser.add_argument("--y-offset", type=int, default=None, help="Vertical offset adjustment in pixels (default: auto)")
     parser.add_argument("--box-center", action="store_true", default=None, help="Center glyph vertically in 16-row box (default: auto for 16px/11px/9px)")
     parser.add_argument("--force-vector", action="store_true", help="Force vector outline rasterization (ignore embedded bitmaps)")
+    parser.add_argument("--color", default="white", help="Default Apple II HGR color: 0..7 or black, green, violet, white, orange, blue (default: white)")
+    parser.add_argument("--mode", default="replace", help="Default drawing mode: replace, overlay, or xor (default: replace)")
     parser.add_argument("--popup", action="store_true", help="Use GUI popup window for Korean/Hanja input instead of console prompt")
     args = parser.parse_args()
 
@@ -1408,6 +1601,8 @@ if __name__ == "__main__":
         y_offset=args.y_offset,
         box_center=args.box_center,
         force_vector=args.force_vector,
-        use_popup=args.popup
+        use_popup=args.popup,
+        color=args.color,
+        draw_mode=args.mode
     )
     server.start()

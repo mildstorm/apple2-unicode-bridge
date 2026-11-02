@@ -62,6 +62,7 @@ def test_2_dsk_baking_and_verification():
     assert 'HANGUL' in filenames, "HANGUL driver missing from DSK!"
     assert 'FONT' in filenames, "FONT binary missing from DSK!"
     assert 'DEMO' in filenames, "DEMO program missing from DSK!"
+    assert 'COLORDEMO' in filenames, "COLORDEMO program missing from DSK!"
     
     # 3. Verify HGR simulation
     v_ok = verify_and_render(dsk_path)
@@ -69,10 +70,13 @@ def test_2_dsk_baking_and_verification():
     
     demo_png = os.path.join(ROOT_DIR, "docs", "images", "verified_standalone_demo.png")
     jemang_png = os.path.join(ROOT_DIR, "docs", "images", "verified_standalone_jemang.png")
+    colordemo_png = os.path.join(ROOT_DIR, "docs", "images", "verified_standalone_colordemo.png")
     assert os.path.exists(demo_png) and os.path.getsize(demo_png) > 1000, "demo PNG not generated!"
     assert os.path.exists(jemang_png) and os.path.getsize(jemang_png) > 1000, "jemang PNG not generated!"
+    assert os.path.exists(colordemo_png) and os.path.getsize(colordemo_png) > 1000, "colordemo PNG not generated!"
     print(f"  * verified_standalone_demo.png: {os.path.getsize(demo_png)} bytes")
     print(f"  * verified_standalone_jemang.png: {os.path.getsize(jemang_png)} bytes")
+    print(f"  * verified_standalone_colordemo.png: {os.path.getsize(colordemo_png)} bytes")
     print("  -> TEST 2 PASSED!")
 
 def test_3_live_tcp_server_protocol():

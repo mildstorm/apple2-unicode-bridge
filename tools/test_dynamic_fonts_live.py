@@ -251,14 +251,13 @@ def test_live_dsk_and_applewin():
         img.save(out_png)
         print(f"  * Real screenshot saved to: {out_png} ({os.path.getsize(out_png)} bytes)")
 
-        # Verify pixels (Green phosphor) across the active Apple II screen
+        # Verify pixels (Active text pixels on HGR screen)
         w, h = img.size
-        screen_area = img.crop((10, 50, w - 10, h - 50))
+        screen_area = img.crop((50, 50, w - 50, h - 50))
         pixels = list(screen_area.getdata())
-        # Green phosphor has G > 100 and low R
-        green_pixels = sum(1 for p in pixels if isinstance(p, tuple) and len(p) >= 3 and p[1] > 100 and p[0] < 50)
-        print(f"  * Detected active Green Phosphor pixels on HGR screen: {green_pixels}")
-        assert green_pixels > 1000, f"Screen does not show expected HGR text! (green_pixels={green_pixels})"
+        active_pixels = sum(1 for p in pixels if isinstance(p, tuple) and len(p) >= 3 and sum(p[:3]) > 80)
+        print(f"  * Detected active text pixels on HGR screen: {active_pixels}")
+        assert active_pixels > 1000, f"Screen does not show expected HGR text! (active_pixels={active_pixels})"
         print("  -> Live AppleWin Standalone Execution: PASSED!")
 
     finally:

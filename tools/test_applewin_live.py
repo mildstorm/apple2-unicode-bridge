@@ -139,7 +139,34 @@ def main():
         print(f"  * Verified display activity: {non_black} / {len(pixels)} non-black pixels detected.")
         assert non_black > 500, f"Screen appears empty or blank! (non_black={non_black})"
         
-        print("\n[SUCCESS] AppleWin live boot and multi-font execution verified successfully!")
+        # Test COLORDEMO (Color & Overlay mode demonstration)
+        cmd_color = "RUN COLORDEMO\r"
+        print(f"  * Typing '{cmd_color.strip()}' into AppleWin...")
+        for ch in cmd_color:
+            if ch == '\r':
+                user32.PostMessageW(hwnd, WM_KEYDOWN, VK_RETURN, 0)
+                user32.PostMessageW(hwnd, WM_CHAR, 0x0D, 0)
+                user32.PostMessageW(hwnd, WM_KEYUP, VK_RETURN, 0)
+            else:
+                user32.PostMessageW(hwnd, WM_KEYDOWN, ord(ch), 0)
+                user32.PostMessageW(hwnd, WM_CHAR, ord(ch), 0)
+                user32.PostMessageW(hwnd, WM_KEYUP, ord(ch), 0)
+            time.sleep(0.08)
+
+        print("  * Waiting 3.5 seconds for COLORDEMO rendering on HGR Page 1...")
+        time.sleep(3.5)
+
+        screenshot_color = capture_hwnd(hwnd)
+        out_color_png = os.path.join(ROOT_DIR, "docs", "images", "actual_applewin_live_colordemo.png")
+        screenshot_color.save(out_color_png)
+        print(f"  * Live screenshot saved to: {out_color_png} ({os.path.getsize(out_color_png)} bytes)")
+
+        pixels_col = list(screenshot_color.crop((w//4, h//4, 3*w//4, 3*h//4)).getdata())
+        non_black_col = sum(1 for p in pixels_col if (isinstance(p, int) and p > 30) or (isinstance(p, tuple) and sum(p[:3]) > 60))
+        print(f"  * Verified COLORDEMO activity: {non_black_col} / {len(pixels_col)} non-black pixels detected.")
+        assert non_black_col > 500, f"Screen appears empty or blank! (non_black_col={non_black_col})"
+
+        print("\n[SUCCESS] AppleWin live boot, multi-font DEMO, and COLORDEMO execution verified successfully!")
 
     finally:
         if hwnd:
