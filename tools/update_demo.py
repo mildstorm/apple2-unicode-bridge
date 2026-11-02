@@ -15,14 +15,14 @@ from inject_basic import build_applesoft_program
 from ac_tool import put_file
 
 DEMO_LINES_DATA = [
-    (10, 'REM MULTI-FONT & COLOR DEMO'),
+    (10, 'REM MULTI-FONT DEMO (CRISP 100% SHARP)'),
     (15, '& "/clear"'),
     (20, '[F:galmuri14][C:white]', '안녕하세요애플투'),
-    (30, '[F:neodgm][C:green]', '도스타자방이야기'),
-    (40, '[F:sam3k][C:orange]', '三國志英雄崛起'),
-    (50, '[F:dosmyungjo][C:blue]', '붓글씨고전바탕'),
-    (60, '[F:galmuri11][C:violet]', '조밀한작은폰트'),
-    (70, '[F:galmuri9][C:green]', '초소형모니터화면'),
+    (30, '[F:neodgm][C:white]', '도스타자방이야기'),
+    (40, '[F:sam3k][C:white]', '三國志英雄崛起'),
+    (50, '[F:dosmyungjo][C:white]', '붓글씨고전바탕'),
+    (60, '[F:galmuri11][C:white]', '조밀한작은폰트'),
+    (70, '[F:galmuri9][C:white]', '초소형모니터화면'),
     (80, '[F:noto][C:white]', '漢字萬國훈민정음'),
     (90, '& "1977 - 2026 RETRO COMPUTING"'),
     (100, 'END'),

@@ -233,8 +233,10 @@ def apply_color_to_glyph(glyph_32: bytes, color_idx: int) -> bytes:
         b1 = glyph_32[r * 2 + 1] & 0x7F
         val = b0 | (b1 << 7)
         if val:
-            expanded = val | (val << 1) | (val >> 1)
-            colored_val = (expanded & color_phase_mask) & 0x3FFF
+            matching = val & color_phase_mask
+            wrong = val & ~color_phase_mask
+            shifted = (wrong << 1) & color_phase_mask
+            colored_val = (matching | shifted) & 0x3FFF
             out[r * 2]     = (colored_val & 0x7F) | hb
             out[r * 2 + 1] = ((colored_val >> 7) & 0x7F) | hb
         else:

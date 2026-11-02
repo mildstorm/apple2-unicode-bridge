@@ -932,55 +932,47 @@ RENDER_CACHE_ROWS
     CMP #4
     BEQ DO_BLACK_GLYPH
 
-    ; Color expansion (Green, Violet, Orange, Blue)
-    ; Expand B0 - combine left and right shifts
-    LDA RAW_B0
-    STA TEMP_BYTE
-    ASL
-    ORA TEMP_BYTE
-    STA EXP_B0
-    LDA TEMP_BYTE
-    LSR
-    ORA EXP_B0
-    STA EXP_B0
-    ; Check boundary bit 0 of RAW_B1
-    LDA RAW_B1
-    LSR
-    BCC NO_BD_B1
-    LDA #$40
-    ORA EXP_B0
-    STA EXP_B0
-NO_BD_B1
-    ; Expand B1 - combine left and right shifts
-    LDA RAW_B1
-    STA TEMP_BYTE
-    ASL
-    ORA TEMP_BYTE
-    STA EXP_B1
-    LDA TEMP_BYTE
-    LSR
-    ORA EXP_B1
-    STA EXP_B1
-    ; Check boundary bit 6 of RAW_B0
-    LDA RAW_B0
-    AND #$40
-    BEQ NO_BD_B0
-    LDA #$01
-    ORA EXP_B1
-    STA EXP_B1
-NO_BD_B0
-
-    ; Apply color mask & palette high-bit
+    ; Smart phase-aligned color (no 3-pixel bloating, preserves 1-pixel strokes)
     LDY CUR_COLOR
     LDA COLOR_MASK_0,Y
+    STA TEMP_BYTE       ; phase mask for B0
+    LDA RAW_B0
+    AND TEMP_BYTE
+    STA EXP_B0          ; matching bits in B0
+    LDA TEMP_BYTE
+    EOR #$7F            ; wrong phase mask
+    AND RAW_B0          ; wrong phase bits
+    ASL                 ; shift 1 pixel left to match phase
+    AND TEMP_BYTE
+    ORA EXP_B0
     AND #$7F
-    AND EXP_B0
     ORA COLOR_HB,Y
     STA TEMP_B0
 
+    ; Check boundary bit 6 of RAW_B0 if it had wrong phase
+    LDA RAW_B0
+    AND #$40
+    BEQ NO_B0_OVERFLOW
+    LDA TEMP_BYTE
+    AND #$40
+    BNE NO_B0_OVERFLOW  ; bit 6 was already matching phase
+    LDA #$01
+    ORA RAW_B1
+    STA RAW_B1
+NO_B0_OVERFLOW
+
     LDA COLOR_MASK_1,Y
+    STA TEMP_BYTE       ; phase mask for B1
+    LDA RAW_B1
+    AND TEMP_BYTE
+    STA EXP_B1          ; matching bits in B1
+    LDA TEMP_BYTE
+    EOR #$7F            ; wrong phase mask
+    AND RAW_B1          ; wrong phase bits
+    ASL                 ; shift 1 pixel left to match phase
+    AND TEMP_BYTE
+    ORA EXP_B1
     AND #$7F
-    AND EXP_B1
     ORA COLOR_HB,Y
     STA TEMP_B1
     JMP DO_DRAW_CELL

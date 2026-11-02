@@ -171,8 +171,10 @@ def verify_and_render(dsk_file="unicode.dsk", custom_ac=None):
                                     b1 = glyph[r * 2 + 1] & 0x7F
                                     val = b0 | (b1 << 7)
                                     if val:
-                                        exp = val | (val << 1) | (val >> 1)
-                                        c_val = (exp & color_mask) & 0x3FFF
+                                        matching = val & color_mask
+                                        wrong = val & ~color_mask
+                                        shifted = (wrong << 1) & color_mask
+                                        c_val = (matching | shifted) & 0x3FFF
                                         y = cur_row * 16 + r
                                         for c in range(14):
                                             if (c_val >> c) & 1:
