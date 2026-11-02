@@ -577,7 +577,7 @@ Switch color or drawing mode mid-sentence without line breaks:
 
 The included `COLORDEMO` program draws a full-screen HGR background grid and prints multi-colored Korean text in overlay mode, followed by replace and XOR modes:
 
-![Verified Color & Overlay Standalone Demo](docs/images/verified_standalone_colordemo.png)
+![Verified Color & Overlay Standalone Demo](docs/images/actual_applewin_live_colordemo.png)
 
 ```basic
 10 REM *** HGR COLOR & OVERLAY DEMO ***
