@@ -592,7 +592,12 @@ The same `[C:...]` lines before (top) and after (bottom), captured from an emula
 | :--- | :---: | :---: | :--- |
 | **`replace`** | `0` | `STA` | **Default**. Clears the 14×16 character bounding cell to black before rendering the glyph. Delivers crisp, maximum legibility. |
 | **`overlay`** | `1` | `ORA` | **Preserves background graphics**. Bitwise ORs glyph strokes directly over the existing HGR screen without erasing grids, charts, maps, or background game art. |
-| **`xor`** | `2` | `EOR` | **Inverts background pixels**. Bitwise XORs character bitmap with underlying screen pixels. Ideal for inverted selection cursors and highlights. |
+| **`xor`** | `2` | `EOR` | **Inverts background pixels**. Bitwise XORs character bitmap with underlying screen pixels. Ideal for inverted selection cursors and highlights. XORed in the colour of a colour area, text is cut out of it in black. |
+
+In overlay and XOR modes a byte the glyph has no dots in is left untouched, palette bit included; where the glyph draws, its palette bit is ORed with the background's. White text keeps an orange or blue background orange or blue, and orange or blue text keeps its colour on black.
+
+> [!TIP]
+> White text ORed onto a solid colour area loses about half its dots: the area already has every other dot lit. For text on a colour area, XOR in that area's colour (black text cut out of it), or clear a box with `replace`.
 
 ---
 
@@ -624,28 +629,32 @@ Switch color or drawing mode mid-sentence without line breaks:
 
 ### 4. Live Demonstration: `RUN COLORDEMO`
 
-The included `COLORDEMO` program draws a full-screen HGR background grid and prints multi-colored Korean text in overlay mode, followed by replace and XOR modes:
-
-![Verified Color & Overlay Standalone Demo](docs/images/actual_applewin_live_colordemo.png)
+The included `COLORDEMO` program (written by `tools/create_color_overlay_demo.py`) draws four colour ribbons and cuts Korean text out of each in black by XORing it in the ribbon's own colour, each ribbon in a different font, then prints white text on black in replace mode (text shown decoded; the program holds it as `\K...\N` hex):
 
 ```basic
-10 REM *** HGR COLOR & OVERLAY DEMO ***
-20 HGR : HCOLOR=3
-30 FOR I = 0 TO 191 STEP 16: HPLOT 0,I TO 279,I: NEXT I
-40 FOR I = 0 TO 279 STEP 28: HPLOT I,0 TO I,191: NEXT I
-50 & "/pos 0 0"
-60 & "/overlay"
-70 & "[C:green]\K녹색 오버레이 글씨\N"
-80 & "[C:violet]\K보라색 유니코드 글꼴\N"
-90 & "[C:orange]\K오렌지색 배경 위 글자\N"
-100 & "[C:blue]\K푸른색 그래픽 오버레이\N"
-110 & "[C:white]\K선명한 백색 텍스트\N"
-120 & "/replace"
-130 & "[C:white]\K리플레이스는 배경 지움\N"
-140 & "/xor"
-150 & "[C:white]\K반전 엑스오어 모드\N"
-160 END
+10 REM *** GORGEOUS APPLE II MULTI-COLOR DEMO ***
+20 HGR : HCOLOR=6: FOR Y=0 TO 17: HPLOT 0,Y TO 279,Y: NEXT Y
+30 & "/pos 1 0" : & "/xor" : & "[F:sam3k][C:blue]★ 애플 II 멀티폰트 데모 ★"
+40 HCOLOR=1: FOR Y=32 TO 49: HPLOT 0,Y TO 279,Y: NEXT Y
+50 & "/pos 1 2" : & "/xor" : & "[F:neodgm][C:green]녹색 리본: 둥근모 레트로 타자체"
+60 HCOLOR=5: FOR Y=64 TO 81: HPLOT 0,Y TO 279,Y: NEXT Y
+70 & "/pos 1 4" : & "/xor" : & "[F:dosmyungjo][C:orange]주황 리본: 품격있는 도스명조체"
+80 HCOLOR=2: FOR Y=96 TO 113: HPLOT 0,Y TO 279,Y: NEXT Y
+90 & "/pos 1 6" : & "/xor" : & "[F:galmuri14][C:violet]보라 리본: 선명한 갈무리 본문체"
+100 & "/pos 1 8"  : & "/replace" : & "[F:galmuri11][C:white]블랙 바탕: 갈무리11 폰트"
+110 & "/pos 1 9"  : & "/replace" : & "[F:galmuri9][C:white]HUD: 초소형 갈무리9 폰트"
+120 END
 ```
+
+Standalone, from the `$6000` font cache on the disk (the 6502 driver folds the 14-dot glyphs into the colour's dots itself, and skips ASCII letters):
+
+![COLORDEMO from the disk font cache](docs/images/board_colordemo_cache.png)
+
+With the PC server streaming the glyphs (`POKE 24576,0` first to bypass the cache), coloured text drawn for its 7 colour columns:
+
+![COLORDEMO through the PC server](docs/images/board_colordemo_server.png)
+
+*Both captured from an emulated Apple //e's LCD (STM32F769I-DISCO, pixel-exact colour decoding, which shows each coloured dot one dot wide, hence the striped ribbons; a composite monitor shows them solid).*
 
 ---
 

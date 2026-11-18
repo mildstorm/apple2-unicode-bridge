@@ -1027,10 +1027,17 @@ DO_DRAW_CELL
     BEQ DRAW_STORE_B0
     CMP #1
     BEQ DRAW_OR_B0
-    ; XOR mode (DRAW_MODE == 2)
+    ; XOR mode (DRAW_MODE == 2). Palette bit as in overlay mode, a byte
+    ; without glyph dots left as it is. XOR in the colour of a colour area
+    ; cuts black text out of it.
     LDA TEMP_B0
     AND #$7F
+    BEQ DRAW_DO_B1
     EOR (PTR_LO),Y
+    BIT TEMP_B0
+    BPL DRAW_XOR_B0_ST
+    ORA #$80
+DRAW_XOR_B0_ST
     STA (PTR_LO),Y
     JMP DRAW_DO_B1
 DRAW_OR_B0
@@ -1057,10 +1064,15 @@ DRAW_DO_B1
     BEQ DRAW_STORE_B1
     CMP #1
     BEQ DRAW_OR_B1
-    ; XOR mode (DRAW_MODE == 2)
+    ; XOR mode (DRAW_MODE == 2), as for byte 0
     LDA TEMP_B1
     AND #$7F
+    BEQ CACHE_NEXT_ROW
     EOR (PTR_LO),Y
+    BIT TEMP_B1
+    BPL DRAW_XOR_B1_ST
+    ORA #$80
+DRAW_XOR_B1_ST
     STA (PTR_LO),Y
     JMP CACHE_NEXT_ROW
 DRAW_OR_B1
@@ -1310,10 +1322,15 @@ GLYPH_ROW_LOOP
     BEQ DOG_STORE_B0
     CMP #1
     BEQ DOG_OR_B0
-    ; XOR mode
+    ; XOR mode, as DRAW_MODE 2 in the cache path
     LDA TEMP_BYTE
     AND #$7F
+    BEQ DOG_DO_B1
     EOR (PTR_LO),Y
+    BIT TEMP_BYTE
+    BPL DOG_XOR_B0_ST
+    ORA #$80
+DOG_XOR_B0_ST
     STA (PTR_LO),Y
     JMP DOG_DO_B1
 DOG_OR_B0
@@ -1339,10 +1356,15 @@ DOG_DO_B1
     BEQ DOG_STORE_B1
     CMP #1
     BEQ DOG_OR_B1
-    ; XOR mode
+    ; XOR mode, as DRAW_MODE 2 in the cache path
     LDA TEMP_BYTE
     AND #$7F
+    BEQ DOG_NEXT_ROW
     EOR (PTR_LO),Y
+    BIT TEMP_BYTE
+    BPL DOG_XOR_B1_ST
+    ORA #$80
+DOG_XOR_B1_ST
     STA (PTR_LO),Y
     JMP DOG_NEXT_ROW
 DOG_OR_B1
@@ -1362,7 +1384,9 @@ DOG_STORE_B1
 DOG_NEXT_ROW
     INX
     CPX #16
-    BNE GLYPH_ROW_LOOP
+    BEQ DOG_RET
+    JMP GLYPH_ROW_LOOP
+DOG_RET
     RTS
 
 CLEAR_HGR

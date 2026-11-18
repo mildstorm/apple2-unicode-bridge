@@ -521,7 +521,12 @@ Apple II는 NTSC 컬러 서브캐리어 위상 및 바이트의 7번째 비트(�
 | :--- | :---: | :---: | :--- |
 | **`replace`** (대체 모드) | `0` | `STA` | **기본값**. 문자가 그려지는 14×16 영역의 기존 배경을 검은색으로 지운 후 글자를 씁니다. 깨끗하고 선명한 텍스트 가독성을 보장합니다. |
 | **`overlay`** (오버레이 모드)| `1` | `ORA` | **기존 배경 보존**. 배경에 그려진 도표, 지도, 그리드 선, 캐릭터 그래픽 등을 지우지 않고 글자의 획만 겹쳐서 그립니다. |
-| **`xor`** (반전 모드) | `2` | `EOR` | **픽셀 반전**. 기존 배경 픽셀과 글자 비트맵을 배타적 논리합(XOR)하여 색상을 반전시킵니다. 선택 반전 커서나 하이라이트에 유용합니다. |
+| **`xor`** (반전 모드) | `2` | `EOR` | **픽셀 반전**. 기존 배경 픽셀과 글자 비트맵을 배타적 논리합(XOR)하여 색상을 반전시킵니다. 선택 반전 커서나 하이라이트에 유용합니다. 색 영역 위에 그 영역과 같은 색으로 XOR하면 검은 글자가 새겨집니다. |
+
+overlay와 XOR 모드에서는 글자 점이 하나도 없는 바이트는 팔레트 비트까지 그대로 두고, 글자가 그려지는 바이트는 글자의 팔레트 비트를 배경의 것과 OR합니다. 그래서 주황·파랑 배경 위의 흰 글자는 배경 색을 유지하고, 검은 바탕의 주황·파랑 글자도 제 색을 유지합니다.
+
+> [!TIP]
+> 색이 칠해진 영역 위에 흰 글자를 overlay하면 점의 절반 가량이 묻힙니다(색 영역은 이미 점이 하나 건너 하나씩 켜져 있음). 색 영역 위의 글자는 그 영역과 같은 색으로 XOR해 검은 글자로 새기거나, `replace`로 칸을 지운 뒤 쓰십시오.
 
 ---
 
@@ -553,30 +558,32 @@ BASIC 프로그램 내에서 `&` 호출로 전체 드로잉 속성을 설정합�
 
 ### 9.4 실전 시연 프로그램: `RUN COLORDEMO`
 
-`unicode.dsk`에 탑재된 `COLORDEMO` 프로그램은 격자 배경 위에 5가지 색상의 오버레이 폰트와 리플레이스 모드의 차이점을 명확하게 보여줍니다:
+`unicode.dsk`에 탑재된 `COLORDEMO` 프로그램(`tools/create_color_overlay_demo.py`로 생성)은 네 가지 색 띠를 그리고, 각 띠에 그 띠와 같은 색으로 XOR해 검은 글자를 새깁니다. 띠마다 글꼴이 다르고, 마지막 두 줄은 검은 바탕에 replace 모드로 흰 글자를 씁니다(아래는 글자를 풀어 쓴 것이고, 프로그램에는 `\K...\N` 16진수로 들어 있습니다):
 
 ```basic
-10 REM *** HGR COLOR & OVERLAY DEMO ***
-20 HGR : HCOLOR=3
-30 FOR I = 0 TO 191 STEP 16: HPLOT 0,I TO 279,I: NEXT I
-40 FOR I = 0 TO 279 STEP 28: HPLOT I,0 TO I,191: NEXT I
-50 & "/pos 0 0"
-60 & "/overlay"
-70 & "[C:green]\K녹색 오버레이 글씨\N"
-80 & "[C:violet]\K보라색 유니코드 글꼴\N"
-90 & "[C:orange]\K오렌지색 배경 위 글자\N"
-100 & "[C:blue]\K푸른색 그래픽 오버레이\N"
-110 & "[C:white]\K선명한 백색 텍스트\N"
-120 & "/replace"
-130 & "[C:white]\K리플레이스는 배경 지움\N"
-140 & "/xor"
-150 & "[C:white]\K반전 엑스오어 모드\N"
-160 END
+10 REM *** GORGEOUS APPLE II MULTI-COLOR DEMO ***
+20 HGR : HCOLOR=6: FOR Y=0 TO 17: HPLOT 0,Y TO 279,Y: NEXT Y
+30 & "/pos 1 0" : & "/xor" : & "[F:sam3k][C:blue]★ 애플 II 멀티폰트 데모 ★"
+40 HCOLOR=1: FOR Y=32 TO 49: HPLOT 0,Y TO 279,Y: NEXT Y
+50 & "/pos 1 2" : & "/xor" : & "[F:neodgm][C:green]녹색 리본: 둥근모 레트로 타자체"
+60 HCOLOR=5: FOR Y=64 TO 81: HPLOT 0,Y TO 279,Y: NEXT Y
+70 & "/pos 1 4" : & "/xor" : & "[F:dosmyungjo][C:orange]주황 리본: 품격있는 도스명조체"
+80 HCOLOR=2: FOR Y=96 TO 113: HPLOT 0,Y TO 279,Y: NEXT Y
+90 & "/pos 1 6" : & "/xor" : & "[F:galmuri14][C:violet]보라 리본: 선명한 갈무리 본문체"
+100 & "/pos 1 8"  : & "/replace" : & "[F:galmuri11][C:white]블랙 바탕: 갈무리11 폰트"
+110 & "/pos 1 9"  : & "/replace" : & "[F:galmuri9][C:white]HUD: 초소형 갈무리9 폰트"
+120 END
 ```
 
-![Verified Color & Overlay Standalone Demo](docs/images/verified_standalone_colordemo.png)
+디스크의 `$6000` 글꼴 캐시로 단독 실행한 화면(6502 드라이버가 14점 글리프를 직접 색 점으로 접고, ASCII 글자는 건너뜀):
 
-*AppleWin 실기 에뮬레이터에서 `RUN COLORDEMO`를 실행하면, 배경 그리드 선이 녹색/보라색/오렌지색/파란색 글자 사이로 그대로 비쳐 보이다가, 120번 라인의 리플레이스 모드부터 배경이 지워지는 동작을 실시간으로 확인할 수 있습니다.*
+![디스크 글꼴 캐시로 실행한 COLORDEMO](docs/images/board_colordemo_cache.png)
+
+PC 서버가 글리프를 보내는 화면(`POKE 24576,0`으로 캐시를 끈 뒤 실행, 컬러 글자를 가로 7칸에 맞춰 그림):
+
+![PC 서버로 실행한 COLORDEMO](docs/images/board_colordemo_server.png)
+
+*둘 다 에뮬레이트된 Apple //e의 LCD(STM32F769I-DISCO, 컬러 점을 점 하나 폭으로 보여 주는 픽셀 단위 디코딩이라 띠가 줄무늬로 보임, 컴포지트 모니터에서는 꽉 찬 색)에서 캡처했습니다.*
 
 ---
 

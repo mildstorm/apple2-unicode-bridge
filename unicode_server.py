@@ -1196,9 +1196,10 @@ class HangulTerminalServer:
     def set_apple2_draw_mode(self, mode_val: int):
         mode_val = parse_draw_mode(mode_val, default=0)
         self.current_mode = mode_val
-        if self._last_sent_mode != mode_val:
-            self.send_raw(bytes([self.CMD_SET_MODE, mode_val]))
-            self._last_sent_mode = mode_val
+        # Always sent: the Apple II may have been reset since the last one (its
+        # driver then starts in replace mode) without the server knowing.
+        self.send_raw(bytes([self.CMD_SET_MODE, mode_val]))
+        self._last_sent_mode = mode_val
 
     def draw_glyph_at(self, col, row, glyph_bytes, color=None, mode=None, ch=None):
         eff_mode = self.current_mode if mode is None else parse_draw_mode(mode, default=self.current_mode)

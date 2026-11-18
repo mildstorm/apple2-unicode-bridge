@@ -3,8 +3,11 @@
 """
 Create and inject COLORDEMO program into unicode.dsk.
 
-Design: Colored ribbon bars (Blue/Green/Orange/Violet/Black) with white Korean
-text drawn in /overlay mode.  Each ribbon uses a different font to demonstrate
+Design: Colored ribbon bars (Blue/Green/Orange/Violet/Black) with Korean text
+cut out of them in black: each ribbon's text is drawn in /xor mode in the
+ribbon's own colour, which clears the ribbon's coloured dots under the glyph.
+(White text ORed onto a ribbon loses about half its dots: a colour area has
+every other dot lit already.) Each ribbon uses a different font to demonstrate
 multi-font support on the Apple II HGR screen.
 
 HCOLOR mapping (Apple II HGR):
@@ -38,19 +41,24 @@ def make_colordemo_program():
         (10,  'REM *** GORGEOUS APPLE II MULTI-COLOR DEMO ***'),
         # Blue ribbon — row 0  (HGR y 0..17)
         (20,  'HGR : HCOLOR=6: FOR Y=0 TO 17: HPLOT 0,Y TO 279,Y: NEXT Y'),
-        (30,  f'& "/pos 2 0" : & "/overlay" : & "[F:sam3k][C:white]{enc("★ 애플 II 컬러 멀티폰트 데모 ★")}"'),
+        # Every line fits the 20 cells of a row as the server lays it out (a
+        # cell for every character, ASCII too), and none ends on row 11, whose
+        # newline would scroll the screen.
+        (30,  f'& "/pos 1 0" : & "/xor" : & "[F:sam3k][C:blue]{enc("★ 애플 II 멀티폰트 데모 ★")}"'),
         # Green ribbon — row 2  (HGR y 32..49)
         (40,  'HCOLOR=1: FOR Y=32 TO 49: HPLOT 0,Y TO 279,Y: NEXT Y'),
-        (50,  f'& "/pos 1 2" : & "/overlay" : & "[F:neodgm][C:white]{enc("녹색 리본: 둥근모 레트로 타자체")}"'),
+        (50,  f'& "/pos 1 2" : & "/xor" : & "[F:neodgm][C:green]{enc("녹색 리본: 둥근모 레트로 타자체")}"'),
         # Orange ribbon — row 4  (HGR y 64..81)
         (60,  'HCOLOR=5: FOR Y=64 TO 81: HPLOT 0,Y TO 279,Y: NEXT Y'),
-        (70,  f'& "/pos 1 4" : & "/overlay" : & "[F:dosmyungjo][C:white]{enc("주황 리본: 품격있는 도스명조체")}"'),
+        (70,  f'& "/pos 1 4" : & "/xor" : & "[F:dosmyungjo][C:orange]{enc("주황 리본: 품격있는 도스명조체")}"'),
         # Violet ribbon — row 6  (HGR y 96..113)
         (80,  'HCOLOR=2: FOR Y=96 TO 113: HPLOT 0,Y TO 279,Y: NEXT Y'),
-        (90,  f'& "/pos 1 6" : & "/overlay" : & "[F:galmuri14][C:white]{enc("보라 리본: 선명한 갈무리 본문체")}"'),
+        (90,  f'& "/pos 1 6" : & "/xor" : & "[F:galmuri14][C:violet]{enc("보라 리본: 선명한 갈무리 본문체")}"'),
         # Black rows — /replace (no background fill needed)
-        (100, f'& "/pos 1 8"  : & "/replace" : & "[F:galmuri11][C:white]{enc("블랙 바탕: 조밀한 갈무리11 폰트")}"'),
-        (110, f'& "/pos 1 10" : & "/replace" : & "[F:galmuri9][C:white]{enc("상태창 HUD: 초소형 갈무리9 폰트")}"'),
+        (100, f'& "/pos 1 8"  : & "/replace" : & "[F:galmuri11][C:white]{enc("블랙 바탕: 갈무리11 폰트")}"'),
+        # Row 9, not 10: HGR leaves the bottom four text lines (rows 10-11)
+        # showing as text.
+        (110, f'& "/pos 1 9"  : & "/replace" : & "[F:galmuri9][C:white]{enc("HUD: 초소형 갈무리9 폰트")}"'),
         (120, 'END'),
     ]
     return lines
