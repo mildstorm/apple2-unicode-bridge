@@ -243,7 +243,7 @@ python ac_tool.py check
 
 ### Step 1: Start the PC Font Server
 
-Ensure Python 3 with `Pillow` and `freetype-py` is installed (or run the standalone `hangul_server.exe`):
+Ensure Python 3 with `Pillow` and `freetype-py` is installed (or run the standalone `unicode_server.exe`):
 
 ```bash
 # Using Python
@@ -253,7 +253,7 @@ python unicode_server.py
 ./unicode_server.exe
 ```
 
-*By default, the server listens on `127.0.0.1:1977` for emulator connections, or you can pass `--port COMx` for physical USB serial connections.*
+*By default, the server connects to the emulator's SSC at `127.0.0.1:1977` (`--host` / `--port` to change it), or pass `--com COMx` for a physical serial connection (9600 baud).*
 
 ### Step 2: Launch AppleWin or Real Hardware
 
@@ -264,7 +264,7 @@ python unicode_server.py
 
 #### Using Real Apple II Hardware:
 1. Connect your PC to the Apple II Super Serial Card (Slot 2) using an RS-232 to USB adapter cable.
-2. Run `python unicode_server.py --serial COM3 --baud 9600`.
+2. Run `python unicode_server.py --com COM3` (9600 baud).
 3. Boot `unicode.dsk` on your Apple II.
 
 ### Step 3: Run the Demonstration
@@ -333,16 +333,18 @@ python verify_dsk_font.py
 
 ### Bundled Font Library (`fonts/`)
 
-| Font File | Type | Target Grid | Characteristics | License |
-| :--- | :--- | :--- | :--- | :--- |
-| **`Galmuri14.ttf`** | Pixel TTF | 14×14 | **Recommended default for HGR.** Crisp Korean glyphs with ideal 1-line top & bottom margins in 14×16 cells (`--y-offset 1`). | SIL OFL 1.1 |
-| **`Galmuri11.ttf`** | Pixel TTF | 11×11 | Compact pixel font, ideal for dense layouts or 80-column style Apple II displays. | SIL OFL 1.1 |
-| **`Galmuri9.ttf`** | Pixel TTF | 9×9 | Ultra-compact micro pixel font for status bars and HUDs. | SIL OFL 1.1 |
-| **`neodgm.ttf`** | Pixel TTF | 16×16 | **Neo둥근모.** The legendary 1990s Korean MS-DOS aesthetic (Hanme Taja, Iyagi). Full 16-row height with thick, bold retro strokes. | SIL OFL 1.1 |
-| **`Sam3KRFont.ttf`** | Pixel TTF | 16×16 | **삼국지3 한글 글꼴.** Faithful reproduction of the classic Koei Romance of the Three Kingdoms III Hangul bitmap font. | MIT License |
-| **`DOSGothic.ttf`** | Pixel TTF | 16×16 | **도스고딕.** Classic Korean MS-DOS Gothic monospace pixel font. | MIT License |
-| **`DOSMyungjo.ttf`** | Pixel TTF | 16×16 | **도스명조.** Classic Korean MS-DOS serif (myeongjo) pixel font. | MIT License |
-| **`NotoSerifCJK16.ttf`** | Vector TTF | Scalable | Full CJK Unicode vector font covering Hangul, Hanja, Japanese Kana, Cyrillic, Greek, and Latin diacritics. | SIL OFL 1.1 |
+All bundled fonts are under open licences (SIL OFL or MIT), free for commercial and non-commercial use.
+
+| Font File | Type | Target Grid | Characteristics | License | Source |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`Galmuri14.ttf`** | Pixel TTF | 14×14 | **Recommended default for HGR.** Crisp Korean glyphs with ideal 1-line top & bottom margins in 14×16 cells (`--y-offset 1`). | SIL OFL 1.1 | [quiple/galmuri](https://github.com/quiple/galmuri) |
+| **`Galmuri11.ttf`** | Pixel TTF | 11×11 | Compact pixel font, ideal for dense layouts or 80-column style Apple II displays. | SIL OFL 1.1 | [quiple/galmuri](https://github.com/quiple/galmuri) |
+| **`Galmuri9.ttf`** | Pixel TTF | 9×9 | Ultra-compact micro pixel font for status bars and HUDs. | SIL OFL 1.1 | [quiple/galmuri](https://github.com/quiple/galmuri) |
+| **`neodgm.ttf`** | Pixel TTF | 16×16 | **Neo둥근모.** The legendary 1990s Korean MS-DOS aesthetic (Hanme Taja, Iyagi). Full 16-row height with thick, bold retro strokes. | SIL OFL 1.1 | [neodgm/neodgm](https://github.com/neodgm/neodgm) |
+| **`Sam3KRFont.ttf`** | Pixel TTF | 16×16 | **삼국지3 한글 글꼴.** Faithful reproduction of the classic Koei Romance of the Three Kingdoms III Hangul bitmap font. | MIT License | Damheo Lee ([hurss/fonts](https://github.com/hurss/fonts)) |
+| **`DOSGothic.ttf`** | Pixel TTF | 16×16 | **도스고딕.** Classic Korean MS-DOS Gothic monospace pixel font. | MIT License | Damheo Lee ([hurss/fonts](https://github.com/hurss/fonts)) |
+| **`DOSMyungjo.ttf`** | Pixel TTF | 16×16 | **도스명조.** Classic Korean MS-DOS serif (myeongjo) pixel font. | MIT License | Damheo Lee ([hurss/fonts](https://github.com/hurss/fonts)) |
+| **`NotoSerifCJK16.ttf`** | Vector TTF | Scalable | Full CJK Unicode vector font covering Hangul, Hanja, Japanese Kana, Cyrillic, Greek, and Latin diacritics. | SIL OFL 1.1 | Google / Adobe |
 
 ### Font Customization, Auto-Detection & Manual Overrides
 
@@ -385,7 +387,7 @@ python unicode_server.py --font "Galmuri14.ttf, Sam3KRFont.ttf, NotoSerifCJK16.t
 # Also supported during offline DSK font subsetting:
 python build_font_dsk.py --font "Galmuri14.ttf, neodgm.ttf, Sam3KRFont.ttf"
 ```
-When rendering a character, the engine searches the faces in order: if a glyph is missing in the primary font, it seamlessly falls back to the secondary and tertiary fonts.
+When rendering a character, the engine searches the faces in order: if a glyph is missing in the primary font, it seamlessly falls back to the secondary and tertiary fonts. You get the crispness of a Hangul pixel font together with the wide Hanja coverage of a large CJK font. The fonts are also registered in that order as slots `1`, `2`, `3`… and under their file names.
 
 #### 4. Dynamic Font Registration, Modification, Removal & Display
 Rather than being restricted to rigid pre-registered configurations, the engine provides a fully dynamic font slot/alias registry. You can register, modify, or unregister any font slot on the fly:
@@ -419,6 +421,8 @@ Rather than being restricted to rigid pre-registered configurations, the engine 
   ```basic
   100 & "/font 1"
   110 & "ALL SUBSEQUENT LINES WILL RENDER IN SLOT 1"
+  120 & "/font body"
+  130 & "FROM HERE ON, LINES RENDER IN THE BODY FONT"
   ```
 
 * **Example Font Assets (`fonts/` directory)**:
@@ -433,13 +437,13 @@ When running `DEMO` on the Apple II (`RUN DEMO`), the system demonstrates its ab
 
 | Line (Row) | Font Name | Pixel Size | Type | Rendered Text Preview |
 | :---: | :--- | :---: | :---: | :--- |
-| **Row 1** | **`Galmuri14`** | 14 px | 픽셀 | `[GALMURI14] 안녕하세요애플투` |
-| **Row 2** | **`Neo둥근모`** | 16 px | 도스 픽셀 | `[NEODGM 16] 도스타자방이야기` |
-| **Row 3** | **`삼국지3글꼴`** | 16 px | 고전 한자/한글 | `[SAM3K  16] 三國志英雄崛起` |
-| **Row 4** | **`도스명조`** | 16 px | 세리프 픽셀 | `[MYUNGJO16] 붓글씨고전바탕` |
-| **Row 5** | **`Galmuri11`** | 11 px | 소형 픽셀 | `[GALMURI11] 조밀한작은폰트` |
-| **Row 6** | **`Galmuri9`** | 9 px | 마이크로 픽셀 | `[GALMURI 9] 초소형모니터화면` |
-| **Row 7** | **`NotoSerifCJK`** | 14 px | 벡터 외곽선 | `[NOTOSERIF] 漢字萬國훈민정음` |
+| **Row 1** | **`Galmuri14`** | 14 px | Pixel | `[GALMURI14] 안녕하세요애플투` |
+| **Row 2** | **`Neo둥근모`** | 16 px | DOS pixel | `[NEODGM 16] 도스타자방이야기` |
+| **Row 3** | **`삼국지3글꼴`** | 16 px | Classic Hanja/Hangul | `[SAM3K  16] 三國志英雄崛起` |
+| **Row 4** | **`도스명조`** | 16 px | Serif pixel | `[MYUNGJO16] 붓글씨고전바탕` |
+| **Row 5** | **`Galmuri11`** | 11 px | Compact pixel | `[GALMURI11] 조밀한작은폰트` |
+| **Row 6** | **`Galmuri9`** | 9 px | Micro pixel | `[GALMURI 9] 초소형모니터화면` |
+| **Row 7** | **`NotoSerifCJK`** | 14 px | Vector outline | `[NOTOSERIF] 漢字萬國훈민정음` |
 | **Row 8** | *System* | 7×16 | ASCII | `1977 - 2026 RETRO COMPUTING` |
 
 ![Multi-Font Standalone Demo](docs/images/verified_standalone_demo.png)
@@ -658,46 +662,46 @@ With the PC server streaming the glyphs (`POKE 24576,0` first to bypass the cach
 
 ---
 
-## 🎧 ADTPro Audio / Cassette Transport (시리얼 카드 없는 환경 지원)
+## 🎧 ADTPro Audio / Cassette Transport (No Serial Card Needed)
 
-SuperSerial Card(SSC) 등의 직렬 통신 인터페이스 카드가 없는 순정 애플 II/IIe 본체에서도, **PC 3.5mm 오디오 출력(이어폰/스피커 단자)과 애플 II 후면 Cassette IN 단자** 연결만으로 폰트 데이터를 실시간 전송받을 수 있습니다.
+Even a stock Apple II/IIe with no serial interface card such as the Super Serial Card can receive font data in real time, with nothing but a cable from the **PC's 3.5 mm audio output (headphone/speaker jack) to the Apple II's rear Cassette IN jack**.
 
 > [!IMPORTANT]
-> **AppleWin 에뮬레이터 제약 사항 (실기 전용 기능)**:
-> `AppleWin` 에뮬레이터는 PC 사운드카드 입력(마이크/라인인)을 Apple II 카세트 포트(`$C060 TAPEIN`)로 전달하는 하드웨어 에뮬레이션을 지원하지 않습니다 (`Tape.cpp: TapeRead` 호출 시 항상 부동 버스(Floating Bus) 값만 반환).
-> 따라서 본 오디오 전송 기능은 **실제 애플 II 실기(Real Hardware)**에서 PC와 애플 II 후면 Cassette IN 단자를 3.5mm 오디오 케이블로 직결할 때 사용하는 **실기 전용 기능**입니다. AppleWin 에뮬레이터 환경에서는 **시리얼(TCP/COM 포트) 연결** 또는 **독립형 DSK 폰트 캐시(`$6000`)** 방식을 사용하십시오.
+> **AppleWin limitation (real hardware only)**:
+> AppleWin does not emulate passing the PC sound card's input (microphone/line-in) to the Apple II cassette port (`$C060 TAPEIN`): `Tape.cpp: TapeRead` always returns the floating-bus value.
+> This audio transport is therefore a **real-hardware-only feature**, for a real Apple II connected to the PC with a 3.5 mm audio cable into its rear Cassette IN jack. In AppleWin, use the **serial (TCP/COM port) connection** or the **standalone DSK font cache (`$6000`)**.
 
-### 1. 전송 규격 (ADTPro Audio FSK Modulation)
-ADTPro(`BytesToWav.java` 및 `AudioTransport.java`)의 검증된 오디오 복조 프로토콜을 탑재했습니다:
-- **오디오 포맷**: 44.1 kHz, 8-bit unsigned PCM (.WAV)
-- **리더톤(Leader Tone)**: 770 Hz 정현파
-- **싱크 비트(Sync Bit)**: 2200 Hz
-- **데이터 비트 '0'**: 2000 Hz 반주기 (~250 µs)
-- **데이터 비트 '1'**: 1000 Hz 반주기 (~500 µs)
-- **체크섬 및 트레일러**: Running XOR 체크섬 바이트 + 200 Hz 트레일러 + 무음 구간
+### 1. Transport Format (ADTPro Audio FSK Modulation)
+It uses the proven audio protocol of ADTPro (`BytesToWav.java` and `AudioTransport.java`):
+- **Audio format**: 44.1 kHz, 8-bit unsigned PCM (.WAV)
+- **Leader tone**: 770 Hz sine wave
+- **Sync bit**: 2200 Hz
+- **Data bit '0'**: 2000 Hz half cycle (~250 µs)
+- **Data bit '1'**: 1000 Hz half cycle (~500 µs)
+- **Checksum and trailer**: running XOR checksum byte + 200 Hz trailer + silence
 
-### 2. PC 측 폰트 오디오 스트리밍 도구
-DSK 이미지 내의 폰트 데이터를 오디오 파형으로 즉시 변환하고 PC 스피커나 이어폰 단자로 송출합니다:
+### 2. PC-Side Font Audio Streaming Tools
+Turn the font data in a DSK image into an audio waveform and play it through the PC's speaker or headphone jack:
 ```bash
-# 1) DSK 폰트 캐시를 WAV 파일로 생성하고 PC 사운드카드로 즉시 재생
+# 1) Build a WAV of the DSK font cache and play it through the PC sound card
 python tools/audio_font_streamer.py --dsk unicode.dsk --play
 
-# 2) 또는 원하는 파일명의 WAV로만 저장
+# 2) Or only save it as a WAV file
 python tools/audio_font_streamer.py --dsk unicode.dsk --wav my_font.wav
 
-# 3) unicode_server에서 직접 폰트 오디오 스트림 생성
+# 3) Have unicode_server write the font audio stream itself
 python unicode_server.py --audio-wav font_stream.wav
 ```
 
-### 3. 애플 II 드라이버 수신 모드 전환
-애플 II측 6502 드라이버는 `$C060`(TAPEIN)의 0↔1 천이 에지 주기를 정밀 측정하여 오디오 신호를 실시간 디코딩합니다:
-- **오디오 모드로 전환**:
+### 3. Switching the Apple II Driver's Receive Mode
+The 6502 driver measures the period between 0↔1 transitions on `$C060` (TAPEIN) to decode the audio signal in real time:
+- **Switch to audio mode**:
   ```basic
-  & "/audio"     (또는 & "/aud")
+  & "/audio"     (or & "/aud")
   ```
-- **시리얼(SuperSerial) 모드로 복귀**:
+- **Back to serial (Super Serial) mode**:
   ```basic
-  & "/serial"    (또는 & "/ser")
+  & "/serial"    (or & "/ser")
   ```
 
 ---
