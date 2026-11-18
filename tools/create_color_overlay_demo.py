@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Create and inject COLORDEMO program into unicode.dsk to showcase:
-1. Apple II HGR Colors (Green, Violet, White, Orange, Blue)
-2. Overlay Draw Mode vs Replace Draw Mode over an existing HGR background
+Create and inject COLORDEMO program into unicode.dsk.
+
+Design: Colored ribbon bars (Blue/Green/Orange/Violet/Black) with white Korean
+text drawn in /overlay mode.  Each ribbon uses a different font to demonstrate
+multi-font support on the Apple II HGR screen.
+
+HCOLOR mapping (Apple II HGR):
+  0 = Black   1 = Green   2 = Violet   3 = White
+  4 = Black   5 = Orange  6 = Blue     7 = White
+
+Usage:
+  python tools/create_color_overlay_demo.py
+Then in AppleWin with unicode.dsk booted:
+  RUN COLORDEMO
 """
 
 import os
@@ -22,23 +33,25 @@ def enc(text):
     return encode_apple2_multilingual(text).decode('ascii')
 
 def make_colordemo_program():
+    """Build ribbon-bar color demo with multiple fonts."""
     lines = [
-        (10, 'REM *** HGR COLOR & OVERLAY DEMO ***'),
-        (20, 'HGR : HCOLOR=3'),
-        (30, 'FOR I = 0 TO 191 STEP 16: HPLOT 0,I TO 279,I: NEXT I'),
-        (40, 'FOR I = 0 TO 279 STEP 28: HPLOT I,0 TO I,191: NEXT I'),
-        (50, '& "/pos 0 0"'),
-        (60, '& "/overlay"'),
-        (70, f'& "[C:green]{enc("녹색 오버레이 글씨")}"'),
-        (80, f'& "[C:violet]{enc("보라색 유니코드 글꼴")}"'),
-        (90, f'& "[C:orange]{enc("오렌지색 배경 위 글자")}"'),
-        (100, f'& "[C:blue]{enc("푸른색 그래픽 오버레이")}"'),
-        (110, f'& "[C:white]{enc("선명한 백색 텍스트")}"'),
-        (120, '& "/replace"'),
-        (130, f'& "[C:white]{enc("리플레이스는 배경 지움")}"'),
-        (140, '& "/xor"'),
-        (150, f'& "[C:white]{enc("반전 엑스오어 모드")}"'),
-        (160, 'END'),
+        (10,  'REM *** GORGEOUS APPLE II MULTI-COLOR DEMO ***'),
+        # Blue ribbon — row 0  (HGR y 0..17)
+        (20,  'HGR : HCOLOR=6: FOR Y=0 TO 17: HPLOT 0,Y TO 279,Y: NEXT Y'),
+        (30,  f'& "/pos 2 0" : & "/overlay" : & "[F:sam3k][C:white]{enc("★ 애플 II 컬러 멀티폰트 데모 ★")}"'),
+        # Green ribbon — row 2  (HGR y 32..49)
+        (40,  'HCOLOR=1: FOR Y=32 TO 49: HPLOT 0,Y TO 279,Y: NEXT Y'),
+        (50,  f'& "/pos 1 2" : & "/overlay" : & "[F:neodgm][C:white]{enc("녹색 리본: 둥근모 레트로 타자체")}"'),
+        # Orange ribbon — row 4  (HGR y 64..81)
+        (60,  'HCOLOR=5: FOR Y=64 TO 81: HPLOT 0,Y TO 279,Y: NEXT Y'),
+        (70,  f'& "/pos 1 4" : & "/overlay" : & "[F:dosmyungjo][C:white]{enc("주황 리본: 품격있는 도스명조체")}"'),
+        # Violet ribbon — row 6  (HGR y 96..113)
+        (80,  'HCOLOR=2: FOR Y=96 TO 113: HPLOT 0,Y TO 279,Y: NEXT Y'),
+        (90,  f'& "/pos 1 6" : & "/overlay" : & "[F:galmuri14][C:white]{enc("보라 리본: 선명한 갈무리 본문체")}"'),
+        # Black rows — /replace (no background fill needed)
+        (100, f'& "/pos 1 8"  : & "/replace" : & "[F:galmuri11][C:white]{enc("블랙 바탕: 조밀한 갈무리11 폰트")}"'),
+        (110, f'& "/pos 1 10" : & "/replace" : & "[F:galmuri9][C:white]{enc("상태창 HUD: 초소형 갈무리9 폰트")}"'),
+        (120, 'END'),
     ]
     return lines
 
@@ -47,13 +60,13 @@ def main():
     lines = make_colordemo_program()
     print("Injecting COLORDEMO lines:")
     for num, txt in lines:
-        print(f"  {num} {txt}")
+        print(f"  {num} {txt[:80]}")
 
     prog_bytes = build_applesoft_program(lines)
     put_file(dsk_path, "COLORDEMO", "A", 0x0801, prog_bytes)
     print(f"COLORDEMO successfully injected into {dsk_path}!")
 
-    # Also update HANGUL driver from UNICODE.BIN
+    # Also refresh HANGUL driver from UNICODE.BIN if present
     driver_bin = os.path.join(ROOT_DIR, "UNICODE.BIN")
     if os.path.exists(driver_bin):
         put_file(dsk_path, "HANGUL", "B", 0x4000, open(driver_bin, "rb").read())
@@ -63,7 +76,7 @@ def main():
     print("Re-baking DSK font cache...")
     ok = process_dsk(dsk_path)
     if ok:
-        print("DSK font cache updated successfully with COLORDEMO glyphs!")
+        print("DSK font cache updated successfully!")
     else:
         print("Failed to re-bake DSK!")
 

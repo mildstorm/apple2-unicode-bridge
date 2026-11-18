@@ -1034,9 +1034,14 @@ DO_DRAW_CELL
     STA (PTR_LO),Y
     JMP DRAW_DO_B1
 DRAW_OR_B0
-    ; Overlay mode (DRAW_MODE == 1)
-    LDA (PTR_LO),Y
+    ; Overlay mode. A byte without glyph dots is left as it is, palette bit
+    ; and all. Otherwise the glyph dots and palette bit are ORed in, so white
+    ; text keeps a coloured background palette and orange or blue text keeps
+    ; its own on black.
+    LDA TEMP_B0
     AND #$7F
+    BEQ DRAW_DO_B1
+    LDA (PTR_LO),Y
     ORA TEMP_B0
     STA (PTR_LO),Y
     JMP DRAW_DO_B1
@@ -1059,9 +1064,11 @@ DRAW_DO_B1
     STA (PTR_LO),Y
     JMP CACHE_NEXT_ROW
 DRAW_OR_B1
-    ; Overlay mode (DRAW_MODE == 1)
-    LDA (PTR_LO),Y
+    ; Overlay mode, as DRAW_OR_B0
+    LDA TEMP_B1
     AND #$7F
+    BEQ CACHE_NEXT_ROW
+    LDA (PTR_LO),Y
     ORA TEMP_B1
     STA (PTR_LO),Y
     JMP CACHE_NEXT_ROW
@@ -1310,9 +1317,12 @@ GLYPH_ROW_LOOP
     STA (PTR_LO),Y
     JMP DOG_DO_B1
 DOG_OR_B0
-    ; Overlay mode
-    LDA (PTR_LO),Y
+    ; Overlay mode, as DRAW_OR_B0. The background palette bit stays
+    ; unless the glyph draws in this byte.
+    LDA TEMP_BYTE
     AND #$7F
+    BEQ DOG_DO_B1
+    LDA (PTR_LO),Y
     ORA TEMP_BYTE
     STA (PTR_LO),Y
     JMP DOG_DO_B1
@@ -1336,9 +1346,11 @@ DOG_DO_B1
     STA (PTR_LO),Y
     JMP DOG_NEXT_ROW
 DOG_OR_B1
-    ; Overlay mode
-    LDA (PTR_LO),Y
+    ; Overlay mode, as DRAW_OR_B0
+    LDA TEMP_BYTE
     AND #$7F
+    BEQ DOG_NEXT_ROW
+    LDA (PTR_LO),Y
     ORA TEMP_BYTE
     STA (PTR_LO),Y
     JMP DOG_NEXT_ROW
