@@ -131,7 +131,12 @@ Entering `&` at the Applesoft prompt `]` drops directly into a full-screen inter
 - Instant toggle between localized input and English with `Ctrl+K` or `` ` `` (backtick).
 - `ESC` returns safely back to Applesoft BASIC.
 
-### 5. Standalone Execution via Font Subsetting (No PC Server Required!)
+### 5. Old Hangul (Hunminjeongeum) Composed a Syllable to a Cell
+Old Hangul (arae-a ㆍ, obsolete jamo, bangjeom tone marks) has no precomposed codepoints: a syllable is a run of conjoining jamo (U+1100–11FF, U+A960–A97F, U+D7B0–D7FF). Drawn a codepoint at a time it comes out spelled apart. The server shapes each syllable with HarfBuzz using `NotoSerifCJK16.ttf`'s `ljmo/vjmo/tjmo` features and draws it into one 14×16 cell (`old_hangul.py`); a string containing old Hangul draws its modern syllables in the same typeface. Example: `10 & "\KEB8298EB9E8FEBA790E1848AE1869EEBAFB8\N"` shows `나랏말ᄊᆞ미` in five cells.
+- Needs `pip install uharfbuzz`; without it (or without the font) the server says so at start-up and draws jamo by jamo as before.
+- Live server streaming only: the standalone `$6000` `FONT` cache keys glyphs by one 3-byte UTF-8 character, so old Hangul there is still drawn jamo by jamo.
+
+### 6. Standalone Execution via Font Subsetting (No PC Server Required!)
 While the live font server streams unlimited Unicode glyphs dynamically, you can also bake the exact subset of fonts used by your BASIC programs directly into the `.dsk` disk image:
 - **Zero PC dependency**: Once baked, the Apple II boots and runs multilingual graphics programs entirely standalone from floppy disk.
 - **Microscopic footprint**: Extracting all 77 unique Hanja and Hangul characters for the *Je-mang-mae-ga* and `DEMO` suites consumes **only 2.7 KB** of disk space (as binary `FONT` loaded at `$6000`).
@@ -144,6 +149,7 @@ While the live font server streams unlimited Unicode glyphs dynamically, you can
 | File | Description |
 | :--- | :--- |
 | **`unicode_server.py`** | Universal Unicode font co-processor & streaming serial/TCP server (Python 3). |
+| **`old_hangul.py`** | Old Hangul (Hunminjeongeum) syllable composition with HarfBuzz, used by the server. |
 | **`unicode_server.exe`** | Standalone pre-compiled Windows executable (bundled with default CJK font). |
 | **`ac_tool.py`** | AppleCommander management wrapper & standalone DSK inspection CLI. |
 | **`build_font_dsk.py`** | Automated font subsetter: extracts used glyphs, bakes `FONT` binary ($6000) into DSK for standalone execution. |
@@ -165,6 +171,7 @@ All scripts in this repository are designed to work out-of-the-box on Windows, m
 - **Python 3.8+**:
   ```bash
   pip install pillow freetype-py
+  pip install uharfbuzz   # optional: old Hangul (Hunminjeongeum) composed a syllable to a cell
   ```
 - **Java Runtime (JRE / JDK 8+)**: Required for running AppleCommander disk operations. Verify with `java -version`.
 

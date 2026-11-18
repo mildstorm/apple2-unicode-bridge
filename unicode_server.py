@@ -40,6 +40,26 @@ else:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     EXE_DIR = SCRIPT_DIR
 
+# Old Hangul (훈민정음: 아래아, 옛 자모, 방점) is written with conjoining jamo,
+# which drawn one codepoint to a cell come out spelled apart. old_hangul.py
+# shapes each syllable with HarfBuzz into one 14x16 cell (needs uharfbuzz and
+# NotoSerifCJK16.ttf); without it old Hangul is drawn jamo by jamo as before.
+OLD_HANGUL = None
+try:
+    import old_hangul
+    _old_hangul_font = old_hangul.default_font(SCRIPT_DIR) or old_hangul.default_font(EXE_DIR)
+    if _old_hangul_font:
+        OLD_HANGUL = old_hangul.Composer(_old_hangul_font)
+    else:
+        print("[Old Hangul] NotoSerifCJK16.ttf not found: old Hangul is drawn jamo by jamo")
+except ImportError as e:
+    print(f"[Old Hangul] {e}: old Hangul is drawn jamo by jamo (pip install uharfbuzz)")
+
+
+def compose_old_hangul(text):
+    """text with each old Hangul syllable as one character for rasterize()."""
+    return OLD_HANGUL.split(text) if OLD_HANGUL is not None else text
+
 # Default Font Candidates: prioritize Galmuri / Gulim (굴림/돋움) which has pixel-perfect 14x14 bitmaps for Korean & Hanja
 FONT_CANDIDATES = [
     # Local project fonts (Galmuri pixel font or NotoSerif)
@@ -527,9 +547,11 @@ class HangulRasterizer:
         return bytes(data)
 
     def rasterize(self, ch):
+        if OLD_HANGUL is not None and OLD_HANGUL.owns(ch):
+            return OLD_HANGUL.render(ch)
         if ch in self.cache:
             return self.cache[ch]
-        
+
         if ch in self.multi_font_map:
             glyph = self.multi_font_map[ch].rasterize(ch)
             self.cache[ch] = glyph
@@ -1124,7 +1146,7 @@ class HangulTerminalServer:
         self.advance_cursor()
 
     def put_string(self, text):
-        for ch in text:
+        for ch in compose_old_hangul(text):
             self.put_char(ch)
 
     def handle_apple2_key(self, b):
@@ -1464,7 +1486,7 @@ class HangulTerminalServer:
                             self.current_color = color_val
                         if mode_val is not None:
                             self.set_apple2_draw_mode(mode_val)
-                        for ch in seg_text:
+                        for ch in compose_old_hangul(seg_text):
                             if ch == '\n' or ch == '\r':
                                 self.newline()
                                 continue
