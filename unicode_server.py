@@ -264,6 +264,100 @@ def apply_color_to_glyph(glyph_32: bytes, color_idx: int) -> bytes:
             out[r * 2 + 1] = hb
     return bytes(out)
 
+# A coloured hi-res dot is every other dot: two dots side by side are white.
+# So a 14-dot cell holds only 7 coloured dots across, and squeezing the 14-dot
+# white glyph into them (apply_color_to_glyph) merges and breaks strokes.
+# Coloured text is drawn instead from a glyph rasterised for 7 columns, a
+# vector font at 8x15 pixels with grey levels, each column one coloured dot.
+COLOR_FONT_CANDIDATES = [
+    r"C:\Windows\Fonts\malgun.ttf",          # Malgun Gothic: Hangul, Latin, Cyrillic
+    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    r"C:\Windows\Fonts\gulim.ttc",
+    r"C:\Windows\Fonts\msjh.ttc",            # Hanja the fonts above lack
+    r"C:\Windows\Fonts\simsun.ttc",
+    os.path.join(SCRIPT_DIR, "NotoSerifCJK16.ttf"),
+]
+
+
+class ColorRasterizer:
+    """Glyphs 7 columns wide (one per coloured dot) by 16 rows."""
+
+    COLS = 7
+    WIDTH_PX, HEIGHT_PX = 8, 15
+    BASELINE = 13
+    INK = 96  # grey level counted as ink
+
+    def __init__(self, font_paths=None):
+        self.faces = []
+        self.cache = {}
+        if not HAVE_FREETYPE:
+            return
+        paths = []
+        for p in list(font_paths or []) + COLOR_FONT_CANDIDATES:
+            for cand in (p, os.path.join(SCRIPT_DIR, "fonts", p), os.path.join(SCRIPT_DIR, p)):
+                if os.path.exists(cand):
+                    cand = os.path.abspath(cand)
+                    if cand not in paths:
+                        paths.append(cand)
+                    break
+        for p in paths:
+            try:
+                f = freetype.Face(p)
+                f.set_pixel_sizes(self.WIDTH_PX, self.HEIGHT_PX)
+                self.faces.append(f)
+            except Exception:
+                pass
+        if self.faces:
+            print(f"[Color-Font] {os.path.basename(paths[0])} (+{len(self.faces) - 1} fallback)")
+
+    def rasterize(self, ch):
+        """16 rows of 7-bit column masks (bit 0 leftmost), or None when no
+        colour font has the character (the caller then folds the white glyph)."""
+        if ch in self.cache:
+            return self.cache[ch]
+        rows = None
+        if ch == ' ':
+            rows = [0] * 16
+        elif len(ch) == 1:
+            face = next((f for f in self.faces if f.get_char_index(ord(ch)) != 0), None)
+            if face is not None:
+                face.load_char(ch, freetype.FT_LOAD_RENDER)
+                bmp = face.glyph.bitmap
+                start_x = max(0, (self.COLS - bmp.width) // 2)
+                start_y = self.BASELINE - face.glyph.bitmap_top
+                rows = [0] * 16
+                for r in range(bmp.rows):
+                    y = start_y + r
+                    if not 0 <= y < 16:
+                        continue
+                    for c in range(bmp.width):
+                        x = start_x + c
+                        if 0 <= x < self.COLS and bmp.buffer[r * bmp.pitch + c] >= self.INK:
+                            rows[y] |= 1 << x
+        self.cache[ch] = rows
+        return rows
+
+
+def color_glyph_from_columns(rows, color_idx: int) -> bytes:
+    """A 7-column glyph as a 14x16 cell of coloured dots: column c lights the
+    dot of the colour's phase in its pair (green/orange odd, violet/blue
+    even), and every byte carries the palette bit."""
+    c = parse_hgr_color(color_idx, default=3)
+    hb = 0x80 if c in (5, 6) else 0x00
+    phase = 1 if c in (1, 5) else 0
+    out = bytearray(32)
+    for r in range(16):
+        val = 0
+        for col in range(7):
+            if (rows[r] >> col) & 1:
+                val |= 1 << (col * 2 + phase)
+        out[r * 2] = (val & 0x7F) | hb
+        out[r * 2 + 1] = ((val >> 7) & 0x7F) | hb
+    return bytes(out)
+
+
 def parse_styled_segments(text, default_font=None, default_color=None, default_mode=None):
     """
     Parses a string into segments of (font_id, color_id, mode_id, text_segment).
@@ -1040,7 +1134,7 @@ class HangulTerminalServer:
     MAX_COLS = 20
     MAX_ROWS = 12
 
-    def __init__(self, host="127.0.0.1", port=1977, com_port=None, font_path=None, font_size=None, y_offset=None, box_center=None, force_vector=False, use_popup=False, color=3, draw_mode="replace"):
+    def __init__(self, host="127.0.0.1", port=1977, com_port=None, font_path=None, font_size=None, y_offset=None, box_center=None, force_vector=False, use_popup=False, color=3, draw_mode="replace", color_font=None):
         self.host = host
         self.port = port
         self.com_port = com_port
@@ -1053,7 +1147,9 @@ class HangulTerminalServer:
         self.default_rasterizer = self.rasterizer
         self.current_rasterizer = self.rasterizer
         self.automata = KoreanAutomata()
-        
+        self.color_rasterizer = ColorRasterizer(
+            [p.strip() for p in color_font.split(",") if p.strip()] if color_font else None)
+
         self.cur_col = 0
         self.cur_row = 0
         self.current_color = parse_hgr_color(color, default=3)
@@ -1104,13 +1200,19 @@ class HangulTerminalServer:
             self.send_raw(bytes([self.CMD_SET_MODE, mode_val]))
             self._last_sent_mode = mode_val
 
-    def draw_glyph_at(self, col, row, glyph_bytes, color=None, mode=None):
+    def draw_glyph_at(self, col, row, glyph_bytes, color=None, mode=None, ch=None):
         eff_mode = self.current_mode if mode is None else parse_draw_mode(mode, default=self.current_mode)
         if eff_mode != self._last_sent_mode:
             self.send_raw(bytes([self.CMD_SET_MODE, eff_mode]))
             self._last_sent_mode = eff_mode
         eff_color = self.current_color if color is None else parse_hgr_color(color, default=self.current_color)
-        colored_glyph = apply_color_to_glyph(glyph_bytes, eff_color)
+        columns = None
+        if ch is not None and eff_color not in (0, 3, 4, 7):
+            columns = self.color_rasterizer.rasterize(ch)
+        if columns is not None:
+            colored_glyph = color_glyph_from_columns(columns, eff_color)
+        else:
+            colored_glyph = apply_color_to_glyph(glyph_bytes, eff_color)
         packet = bytearray([self.CMD_DRAW_GLYPH, col, row]) + colored_glyph
         self.send_raw(packet)
 
@@ -1142,7 +1244,7 @@ class HangulTerminalServer:
             return
         
         glyph = self.rasterizer.rasterize(ch)
-        self.draw_glyph_at(self.cur_col, self.cur_row, glyph)
+        self.draw_glyph_at(self.cur_col, self.cur_row, glyph, ch=ch)
         self.advance_cursor()
 
     def put_string(self, text):
@@ -1495,7 +1597,7 @@ class HangulTerminalServer:
                                 self.advance_cursor()
                                 continue
                             glyph = active_r.rasterize(ch)
-                            self.draw_glyph_at(self.cur_col, self.cur_row, glyph, color=self.current_color, mode=self.current_mode)
+                            self.draw_glyph_at(self.cur_col, self.cur_row, glyph, color=self.current_color, mode=self.current_mode, ch=ch)
                             self.advance_cursor()
                     self.newline()
                     self.send_raw(bytes([0x00])) # Send CMD_DONE
@@ -1622,6 +1724,7 @@ if __name__ == "__main__":
     parser.add_argument("--box-center", action="store_true", default=None, help="Center glyph vertically in 16-row box (default: auto for 16px/11px/9px)")
     parser.add_argument("--force-vector", action="store_true", help="Force vector outline rasterization (ignore embedded bitmaps)")
     parser.add_argument("--color", default="white", help="Default Apple II HGR color: 0..7 or black, green, violet, white, orange, blue (default: white)")
+    parser.add_argument("--color-font", default=None, help="Vector font(s) for coloured text, drawn 7 columns wide (default: Malgun Gothic, then system CJK fonts)")
     parser.add_argument("--mode", default="replace", help="Default drawing mode: replace, overlay, or xor (default: replace)")
     parser.add_argument("--popup", action="store_true", help="Use GUI popup window for Korean/Hanja input instead of console prompt")
     parser.add_argument("--audio-wav", default=None, help="Export entire font table as ADTPro-compatible WAV file for Apple II Cassette In")
@@ -1651,6 +1754,7 @@ if __name__ == "__main__":
         force_vector=args.force_vector,
         use_popup=args.popup,
         color=args.color,
-        draw_mode=args.mode
+        draw_mode=args.mode,
+        color_font=args.color_font
     )
     server.start()

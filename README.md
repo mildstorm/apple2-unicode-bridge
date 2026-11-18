@@ -136,6 +136,10 @@ Old Hangul (arae-a ㆍ, obsolete jamo, bangjeom tone marks) has no precomposed c
 - Needs `pip install uharfbuzz`; without it (or without the font) the server says so at start-up and draws jamo by jamo as before.
 - Live server streaming only: the standalone `$6000` `FONT` cache keys glyphs by one 3-byte UTF-8 character, so old Hangul there is still drawn jamo by jamo.
 
+The Hunminjeongeum preface streamed over the SSC to an emulated Apple //e (an STM32F769I-DISCO board's LCD, monochrome monitor), every syllable in one cell:
+
+![Hunminjeongeum preface, old Hangul composed a syllable to a cell](docs/images/board_hunminjeongeum.png)
+
 ### 6. Standalone Execution via Font Subsetting (No PC Server Required!)
 While the live font server streams unlimited Unicode glyphs dynamically, you can also bake the exact subset of fonts used by your BASIC programs directly into the `.dsk` disk image:
 - **Zero PC dependency**: Once baked, the Apple II boots and runs multilingual graphics programs entirely standalone from floppy disk.
@@ -541,6 +545,14 @@ The Apple II generates color on color composite monitors through artifact colori
 | **6** | **`blue`** | `cyan`, `b`, `c` | Blue / Cyan (Palette 1, Bit 7 = 1) |
 
 *Applesoft BASIC's standard `HCOLOR=x` command is also automatically synced whenever an `&` command executes.*
+
+**How coloured text is drawn**: a coloured HGR dot is every other dot (two side by side are white), so a 14-dot cell holds only 7 coloured dots across. Folding the 14-dot white glyph into them merged and broke strokes. The server now rasterises coloured characters for those 7 columns from a vector font at 8×15 (Malgun Gothic by default, then system CJK fonts; `--color-font` to choose), one coloured dot per column, in the colour's phase. White text keeps the full 14-dot glyph. Characters no colour font has (and old Hangul syllables) are still folded the old way.
+
+The same `[C:...]` lines before (top) and after (bottom), captured from an emulated Apple //e's LCD (STM32F769I-DISCO, pixel-exact colour decoding, which shows each coloured dot one dot wide; a composite monitor or AppleWin's Color TV mode spreads it, so horizontal strokes look solid there):
+
+![Coloured text, folded white glyphs vs glyphs drawn for 7 colour columns](docs/images/board_color_compare.png)
+
+![Coloured text drawn for 7 colour columns](docs/images/board_color_text.png)
 
 ---
 
