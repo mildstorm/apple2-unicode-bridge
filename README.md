@@ -101,6 +101,36 @@ You can write this directly in Applesoft BASIC using standard line numbers and t
 
 ---
 
+## 📜 Live Demonstration: 訓民正音 (Hunminjeongeum) in Old Hangul
+
+The preface of *Hunminjeongeum* (1446) is written in old Hangul: arae-a (ㆍ), obsolete jamo such as ᄊ ᄍ ᄠ ᇰ ᇙ, and syllables with no precomposed codepoint. The server composes each syllable from its conjoining jamo with HarfBuzz and draws it in one 14×16 cell, so nothing is spelled apart (see [Old Hangul](#5-old-hangul-hunminjeongeum-composed-a-syllable-to-a-cell)).
+
+Captured from the LCD of an emulated Apple //e (STM32F769I-DISCO board, monochrome monitor), with the server streaming over the Super Serial Card:
+
+![訓民正音 preface on the Apple II HGR screen, every old Hangul syllable in one cell](docs/images/board_hunminjeongeum_zoom.png)
+
+```basic
+10 & "\KEB8298EB9E8FEBA790E1848AE1869EEBAFB820EB9380E187B0EAB781EC9790\N"
+20 & "\KEB8BACEC958420EBACB8E1848DE1869EE186BCEC9980EBA19C\N"
+30 & "\KEC849CEBA5B420E18489E1869EE18486E1869EE186BAEB949420EC9584EB8B88E18492E1869EE186AFE1848AE186A1\N"
+40 & "\KEC9DB4EB9FB0ECA0BCE1848EE1869EEBA19C20EC96B4EBA6B0\N"
+50 & "\KE799BEE18487E186A1E186A8E5A793EC8594E187B0EC9DB420EB8B88EBA5B4EAB3A0ECA0B8\N"
+60 & "\KED98B8E18799EBB0B0EC9DB4EC8594EB8F8420E18486E1869EE1848EE1869EE186B7EB82B4\N"
+70 & "\KECA09CE184A0E185B3EB93A420EC8B9CEB9FACED8EB4EB9494\N"
+80 & "\KEBAAAFE18492E1869EE18799EB85B8EBAFB820ED9598EB8B88EB9DBC\N"
+```
+
+The hex strings are UTF-8 for:
+
+```
+나랏말ᄊᆞ미 듀ᇰ귁에 / 달아 문ᄍᆞᆼ와로 / 서르 ᄉᆞᄆᆞᆺ디 아니ᄒᆞᆯᄊᆡ / 이런젼ᄎᆞ로 어린
+百ᄇᆡᆨ姓셔ᇰ이 니르고져 / 호ᇙ배이셔도 ᄆᆞᄎᆞᆷ내 / 제ᄠᅳ들 시러펴디 / 몯ᄒᆞᇙ노미 하니라
+```
+
+Paste the text with **`Ctrl+K`** instead of typing hex, as for any other Unicode string. Composition needs `pip install uharfbuzz`.
+
+---
+
 ## 🚀 Key Features
 
 ### 1. Applesoft BASIC Extension (`&`)
