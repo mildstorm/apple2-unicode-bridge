@@ -129,6 +129,29 @@ The hex strings are UTF-8 for:
 
 Paste the text with **`Ctrl+K`** instead of typing hex, as for any other Unicode string. Composition needs `pip install uharfbuzz`.
 
+### How to Run It (AppleWin)
+
+1. Install the Python packages, `uharfbuzz` included:
+   ```bash
+   pip install pillow freetype-py uharfbuzz
+   ```
+2. In AppleWin, open **Configuration** and set **Serial Port** to **TCP**: the Super Serial Card in slot 2 then listens on TCP port 1977. For the cleanest strokes set **Video** to a **Monochrome** mode (a colour mode fringes one-pixel strokes).
+3. Insert [`unicode.dsk`](unicode.dsk) in drive 1 and boot it. `HELLO` loads the driver at `$4000` and the font cache at `$6000`, and leaves you at the `]` prompt.
+4. Start the PC server; it connects to AppleWin's port 1977 (on real hardware, `--com COMx` instead):
+   ```bash
+   python unicode_server.py
+   ```
+5. At the `]` prompt, switch off the disk's font cache, so that every `&` string goes to the server:
+   ```basic
+   POKE 24576,0
+   ```
+   *Without this step the driver draws from the `$6000` cache that `HELLO` loaded, which holds glyphs one UTF-8 character at a time: old Hangul there is spelled apart, jamo by jamo.*
+6. Type the program above (or paste each line's text with `Ctrl+K` after `10 & "`), then `RUN`.
+
+The same program in AppleWin 1.32.1 (Monochrome Green), captured from its window:
+
+![訓民正音 preface in AppleWin](docs/images/applewin_hunminjeongeum.png)
+
 ---
 
 ## 🚀 Key Features
@@ -164,7 +187,7 @@ Entering `&` at the Applesoft prompt `]` drops directly into a full-screen inter
 ### 5. Old Hangul (Hunminjeongeum) Composed a Syllable to a Cell
 Old Hangul (arae-a ㆍ, obsolete jamo, bangjeom tone marks) has no precomposed codepoints: a syllable is a run of conjoining jamo (U+1100–11FF, U+A960–A97F, U+D7B0–D7FF). Drawn a codepoint at a time it comes out spelled apart. The server shapes each syllable with HarfBuzz using `NotoSerifCJK16.ttf`'s `ljmo/vjmo/tjmo` features and draws it into one 14×16 cell (`old_hangul.py`); a string containing old Hangul draws its modern syllables in the same typeface. Example: `10 & "\KEB8298EB9E8FEBA790E1848AE1869EEBAFB8\N"` shows `나랏말ᄊᆞ미` in five cells.
 - Needs `pip install uharfbuzz`; without it (or without the font) the server says so at start-up and draws jamo by jamo as before.
-- Live server streaming only: the standalone `$6000` `FONT` cache keys glyphs by one 3-byte UTF-8 character, so old Hangul there is still drawn jamo by jamo.
+- Live server streaming only: the standalone `$6000` `FONT` cache keys glyphs by one 3-byte UTF-8 character, so old Hangul there is still drawn jamo by jamo. After booting `unicode.dsk`, run `POKE 24576,0` first so the strings go to the server (see [How to Run It](#how-to-run-it-applewin)).
 
 The Hunminjeongeum preface streamed over the SSC to an emulated Apple //e (an STM32F769I-DISCO board's LCD, monochrome monitor), every syllable in one cell:
 
