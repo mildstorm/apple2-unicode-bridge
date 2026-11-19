@@ -65,7 +65,8 @@ STARTUP = """
 60 PRINT " APPLE II UNICODE - PRODOS HARD DISK"
 70 IF PEEK (16387) THEN PRINT " FONT: UFONT (NO SERVER NEEDED)"
 80 IF NOT PEEK (16387) THEN PRINT " UFONT NOT FOUND: & USES THE SERVER"
-90 PRINT " RUN HDDEMO / CTRL+K WITH THE SERVER"
+85 IF PEEK (16387) THEN PRINT " CTRL+K HANGUL, CTRL+J HANJA (ONBOARD)"
+90 PRINT " RUN HDDEMO   (POKE 16453,1: SSC INPUT)"
 100 PRINT "========================================"
 110 NEW
 """
@@ -96,6 +97,37 @@ def demo_program():
         lines.append(f'{n * 10} & "{encode_line(text)}"')
     lines.append(f"{len(DEMO_LINES) * 10 + 10} END")
     return "\n".join(lines)
+
+
+# Hanja for the onboard Ctrl+K line, where no glyphs are (U+D800-DFFF): for
+# syllable s (code point - U+AC00) 4 bytes at HANJA_INDEX + s*4 (where its
+# list starts, in code points, 2 bytes; how many; 0), the lists of 16-bit
+# code points from HANJA_DATA.
+HANJA_INDEX = 0xD800 * GLYPH          # $1B0000
+HANJA_DATA = HANJA_INDEX + 0xB000     # $1BB000
+HANJA_END = 0xE000 * GLYPH
+
+
+def add_hanja(font):
+    table = {}
+    with open(os.path.join(ROOT, "hanja_table.txt"), encoding="utf-8") as f:
+        for line in f:
+            if not line.startswith("#") and "\t" in line:
+                reading, cands = line.rstrip("\n").split("\t", 1)
+                table[reading] = [c for c in cands if ord(c) <= 0xFFFF][:255]
+    data = bytearray()
+    for s in range(11172):
+        cands = table.get(chr(0xAC00 + s), [])
+        if not cands:
+            continue
+        start = len(data) // 2
+        font[HANJA_INDEX + s * 4:HANJA_INDEX + s * 4 + 4] = bytes(
+            [start & 0xFF, start >> 8, len(cands), 0])
+        for c in cands:
+            data += ord(c).to_bytes(2, "little")
+    assert HANJA_DATA + len(data) <= HANJA_END, "Hanja lists do not fit"
+    font[HANJA_DATA:HANJA_DATA + len(data)] = data
+    return len(data) // 2
 
 
 def build_font(font, ranges):
@@ -142,6 +174,7 @@ def main():
     ranges = [r for r in RANGES if args.size == "32M" or r[0] not in HANJA_RANGES]
     print(f"[1/3] Rasterising glyphs with {args.font}")
     font, count = build_font(args.font, ranges)
+    print(f"  Hanja for Ctrl+J: {add_hanja(font)} candidates")
 
     print("[2/3] Writing the volume")
     vol = Volume(blocks, args.volume, boot)

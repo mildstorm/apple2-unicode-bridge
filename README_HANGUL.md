@@ -23,7 +23,7 @@ Apple II의 원래 하드웨어는 1970년대 문자 생성 롬(ROM)에 묶여 �
 3. **Applesoft BASIC `&`(앰퍼샌드) 연동**: `10 & "\KHello World / 한글 / 漢字 / Привет / こんにちは\N"` 같은 문법으로 BASIC 프로그램 안에 다국어 문장을 바로 넣고 실행합니다.
 4. **Hex 안전 인코딩**: Apple II의 8비트 입력 처리와 Caps Lock 때문에 생기는 BASIC 토큰 충돌($80–$EA)과 `?SYNTAX ERROR`를 막습니다.
 5. **대화형 전체화면 터미널**: 키보드 입력, 한글 입력기(IME), 자동 줄바꿈을 지원하는 280×192 그래픽 콘솔을 제공합니다.
-6. **Apple II 키보드로 입력**: BASIC 작성 중 `Ctrl+K`를 누르면 입력 줄이 열려, 2벌식 한글(한자 변환 포함)·일본어 가나·러시아어·그리스어를 Windows 입력기와 같은 방식으로 조합해 칠 수 있습니다([Ctrl+K](#2-ctrlk-입력-2벌식한자가나러시아어그리스어) 참고).
+6. **Apple II 키보드로 입력**: BASIC 작성 중 `Ctrl+K`를 누르면 입력 줄이 열려, 2벌식 한글(한자 변환 포함)을 Windows 입력기와 같은 방식으로 조합해 칠 수 있습니다. ProDOS 하드디스크에서는 Apple II 안에서 조합하고(PC 불필요), SSC로 PC 서버를 쓰면 일본어 가나·러시아어·그리스어도 됩니다([Ctrl+K](#2-ctrlk-입력-2벌식한자가나러시아어그리스어) 참고).
 7. **실기용 하드디스크 글꼴**: ProDOS 하드디스크에 둔 글꼴 파일에서 드라이버가 모든 글리프(한글·한자·가나·그리스어·러시아어·기호)를 읽으므로, PC를 연결하지 않은 실기에서도 유니코드가 나옵니다([ProDOS 하드디스크](#-prodos-하드디스크-서버-없이-글꼴-전체) 참고).
 
 ---
@@ -171,12 +171,17 @@ Applesoft BASIC에서 바로 다국어 유니코드 문장을 출력할 수 있�
 ### 2. `Ctrl+K` 입력 (2벌식·한자·가나·러시아어·그리스어)
 
 > [!IMPORTANT]
-> **다국어 입력(한글/한자/가나/러시아어/그리스어) 시 Super Serial Card (Slot 2) 및 PC 서버 필수**
-> - **필요한 이유**: Apple II 상주 6502 드라이버(`$4000`, 약 5KB)는 초경량 입출력 스텁으로, 복잡한 2벌식 오토마타(초성·중성·종성 결합, 이중모음/받침 조합, 백스페이스 자모 분해, 한자 사전 검색, 가나 로마자 매핑) 코드를 내장하고 있지 않습니다. Apple II 키보드를 누를 때마다 **Slot 2의 Super Serial Card (6551 ACIA 통신 칩)** 를 통해 PC 호스트 서버(`unicode_server.py`)로 키 코드를 전송하고, PC 서버가 실시간으로 조합한 글리프 비트맵과 텍스트를 시리얼로 Apple II에 되돌려주어 화면에 띄웁니다.
-> - **따라서 Super Serial Card(또는 에뮬레이터의 시리얼 포트 에뮬레이션)가 연결되어 있지 않으면 Apple II 키보드로 실시간 한글 및 다국어를 타이핑할 수 없습니다.**
-> - **환경별 설정 방법**:
->   - **AppleWin (에뮬레이터)**: 실제 카드를 살 필요 없이, **`F10` (설정) → [Serial] 탭**에서 **Slot 2 Serial Port**를 **`TCP`** (기본 1977 포트)로 체크합니다.
->   - **Apple II 실기**: 본체 메인보드의 **Slot 2에 실제 Super Serial Card (SSC)** 를 장착하고, RS-232/USB 시리얼 케이블로 PC와 연결한 뒤 PC에서 `python unicode_server.py --com COMx`로 서버를 엽니다.
+> **조합 방식 두 가지: Apple II 안에서(기본) 또는 Super Serial Card로 PC에서**
+>
+> | | **온보드** (기본) | **SSC** (`POKE 16453,1`) |
+> | :--- | :--- | :--- |
+> | 조합하는 곳 | 6502 드라이버 자체 | PC 서버(`unicode_server.py`) |
+> | 필요한 것 | ProDOS 하드디스크(`unicode.hdv`의 `UFONT`) | 슬롯 2의 Super Serial Card와 서버 |
+> | 모드 | 한 2벌식과 한자(`Ctrl+J`), A | 한, あ, ア, Я, Ω, A, `Ctrl+P`(PC 입력), 터미널 모드 |
+>
+> - ProDOS에서 `UFONT`가 있으면 `Ctrl+K`는 **시리얼 카드도 PC도 없이 Apple II 안에서** 조합합니다. 드라이버에 2벌식 오토마타가 들어 있고(서버와 같은 규칙, `tools/test_onboard_ime.py`가 같은 사례로 확인), 입력 줄은 `UFONT`로 그리며, 한자 후보도 `UFONT`에서 읽습니다.
+> - `POKE 16453,1`이면 `Ctrl+K`를 SSC로 PC 서버에 넘깁니다(가나·러시아어·그리스어·`Ctrl+P`). `POKE 16453,0`이면 다시 온보드입니다. `UFONT`가 없으면(DOS 3.3 플로피 `unicode.dsk`) 언제나 서버입니다.
+> - **SSC 설정**: **AppleWin**: **`F10`(설정) → [Serial] 탭**에서 **Slot 2 Serial Port**를 **`TCP`**(1977번 포트)로. **실기**: **Slot 2에 Super Serial Card**, RS-232/USB 시리얼 케이블로 PC에 연결, `python unicode_server.py --com COMx`.
 
 BASIC 프로그램을 입력하다가 **`Ctrl+K`** 를 누르면 Apple II 키보드로 입력할 수 있습니다. 혼합 모드 HGR의 마지막 줄에 입력 줄이 열리고, 그 아래 텍스트 4줄이 보입니다. BASIC 줄이 화면 아래쪽에 있으면 함께 보입니다. Windows 입력기처럼 조합 중인 글자는 반전으로 보이고, 다음 키가 붙을 수 없을 때 확정됩니다.
 
@@ -191,9 +196,9 @@ BASIC 프로그램을 입력하다가 **`Ctrl+K`** 를 누르면 Apple II 키보
 | 키 | 동작 |
 | :--- | :--- |
 | `Ctrl+K` | 언어 ↔ A (한/영 키) |
-| `Ctrl+L` | 다음 언어: 한 → あ → ア → Я → Ω (`--ime-langs ko,hira,kata,ru,el`로 고르고 순서를 정함, 첫 번째가 기본) |
+| `Ctrl+L` | 다음 언어: 한 → あ → ア → Я → Ω (`--ime-langs ko,hira,kata,ru,el`로 고르고 순서를 정함, 첫 번째가 기본). SSC 방식만 |
 | `Ctrl+J` (↓) | 조합 중인 글자나 커서 앞 글자를 **한자**로. 입력 줄 위에 후보가 나옵니다(읽기 486개, 한자 8,649자, 많이 쓰는 순). `1`–`9` 선택, `Space` / → / ↓ 다음 쪽, ← / ↑ 이전 쪽, `Return` 첫 후보, `Esc` 목록 닫기 |
-| `Ctrl+P` | PC 입력(콘솔, `--popup`이면 창). 그 밖의 문자를 PC 입력기로 입력하거나 붙여 넣으면 입력 줄에 이어 붙습니다 |
+| `Ctrl+P` | PC 입력(콘솔, `--popup`이면 창). 그 밖의 문자를 PC 입력기로 입력하거나 붙여 넣으면 입력 줄에 이어 붙습니다. SSC 방식만 |
 | `Return` | Hex 안전 문자열 `\K…\N`으로 BASIC 줄에 넣기 |
 | `Esc` | 취소 |
 
@@ -205,7 +210,9 @@ BASIC 프로그램을 입력하다가 **`Ctrl+K`** 를 누르면 Apple II 키보
 
 한자는 한 글자씩 바꾸고, 가나는 가나로만 입력됩니다(가나→한자 변환은 없으니 일본어 한자는 `Ctrl+P`로). 한자표 `hanja_table.txt`는 `tools/build_hanja_table.py`가 유니코드 한자 데이터베이스(Unihan)로 만듭니다.
 
-`python unicode_server.py --pc-input`으로 실행하면 예전처럼 `Ctrl+K`가 PC 입력을 바로 엽니다. 테스트: `python tools/test_dubeol_ime.py`(2벌식 규칙), `python tools/test_ime_engines.py`(가나·러시아어·그리스어·한자·모드 키), `python tools/test_ime_live.py`(AppleWin에서 줄을 입력해 화면 저장).
+온보드 입력 줄도 같은 방식으로 글자의 대소문자에서 Caps Lock을 판단합니다(Shift가 보이지 않는 것은 마찬가지).
+
+`python unicode_server.py --pc-input`으로 실행하면 SSC 방식에서 `Ctrl+K`가 PC 입력을 바로 엽니다. 테스트: `python tools/test_dubeol_ime.py`(2벌식 규칙), `python tools/test_onboard_ime.py`(드라이버의 6502 오토마타를 py65에서 같은 사례로), `python tools/test_ime_engines.py`(가나·러시아어·그리스어·한자·모드 키), `python tools/test_ime_live.py`(AppleWin에서 줄을 입력해 화면 저장).
 
 ### 3. Hex 안전 스트림 프로토콜 (`\K ... \N`)
 Apple II의 줄 입력 루틴(`GETLN`)과 Applesoft 키워드 해석기(`PARSE`)는 `$80`–`$FF` 바이트를 BASIC 내부 토큰이나 제어 코드로 취급합니다. UTF-8 바이트를 그대로 넣으면 곧바로 문법 오류가 납니다.
@@ -351,8 +358,8 @@ RUN DEMO
 | :--- | :--- | :--- |
 | DOS 3.3 `unicode.dsk` + 서버 | `$6000` 캐시(`build_font_dsk.py`가 넣은 글자). `POKE 24576,0`이면 모두 서버로(어떤 글자든, 옛한글, 컬러) | 서버 |
 | DOS 3.3 `unicode.dsk`, 서버 없음 | `$6000` 캐시만 | — |
-| ProDOS 하드디스크, 서버 없음 | `UFONT`에 있는 34,596자 전부 | — |
-| ProDOS 하드디스크 + 서버 | `UFONT`. `POKE 16387,0`이면 서버로 | 서버 |
+| ProDOS 하드디스크, 서버 없음 | `UFONT`에 있는 34,596자 전부 | `Ctrl+K` 온보드(2벌식·한자). 터미널 모드 없음 |
+| ProDOS 하드디스크 + 서버 | `UFONT`. `POKE 16387,0`이면 서버로 | `Ctrl+K` 온보드, `POKE 16453,1`이면 서버. 터미널 모드는 서버 |
 | 글꼴 디스크도 시리얼 카드도 없음 | `& "/TAPE"`로 카세트 입력에서 캐시를 읽음([카세트 입력](#-카세트-입력-시리얼-카드도-디스크도-없이-글꼴-캐시)) | — |
 
 ---
@@ -459,37 +466,27 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 | `16387` (`$4003`) | `CALL 16384` 때 `UFONT`가 열리면 1. `POKE 16387,0`이면 `&` 문자열을 다시 서버로 보냄(옛한글 모아쓰기, 컬러 글자) |
 | `16388` (`$4004`) | 글꼴 파일 경로: 길이 한 바이트, 그 뒤 63자까지(기본값 `UFONT`). 바꾼 뒤에는 `CALL 16384`를 다시 함 |
 | `16452` (`$4044`) | 마지막으로 실패한 글꼴 파일 호출의 ProDOS 오류(예: 70 = 파일 없음), 없으면 0 |
+| `16453` (`$4045`) | `Ctrl+K`를 무엇으로 조합할지: 0이면 Apple II 안에서(기본, `UFONT` 필요), 1이면 SSC로 PC 서버 |
 
-서버가 없으면 옛한글 음절(HarfBuzz 필요)과 컬러 글자 래스터화는 쓸 수 없고, `Ctrl+K` 조합도 서버가 해야 합니다. 서버를 연결하면 ProDOS에서도 DOS 3.3과 똑같이 `Ctrl+K`를 쓸 수 있습니다. `python tools/test_hdd_live.py [이미지]`는 AppleWin에서 이미지를 부팅해 두 예제를 실행하고, 끝나면 AppleWin 설정을 원래대로 돌려 놓습니다.
+ProDOS에서는 드라이버가 1KB 파일 버퍼를 BASIC.SYSTEM에서 받으므로(`GETBUFR`) HIMEM이 38400에서 37376(`$9200`)으로 내려갑니다. 드라이버 자체는 `$4000`–`$5EFF`를 차지합니다.
+
+서버가 없으면 옛한글 음절(HarfBuzz 필요)과 컬러 글자 래스터화는 쓸 수 없습니다. `Ctrl+K`는 Apple II 안에서 조합하고(2벌식·한자, 아래 참고), `POKE 16453,1`이면 서버로 조합합니다. `python tools/test_hdd_live.py [이미지]`는 AppleWin에서 이미지를 부팅해 두 예제를 실행하고, 끝나면 AppleWin 설정을 원래대로 돌려 놓습니다.
 
 ### 3. 하드디스크(`unicode.hdv`) 부팅 후 한글 입력 방법
 
-하드디스크로 부팅한 후 한글을 사용하는 방식은 **출력(그리기)**과 **입력(타이핑)**에 차이가 있습니다:
+`unicode.hdv`로 부팅하면 그리기와 2벌식 입력 모두 **PC도 시리얼 카드도 없이** 됩니다:
 
-1. **한글/한자 출력(그리기) — PC 서버 없이 단독 작동**:
-   - `unicode.hdv` 내에 약 3만 4천 글리프가 담긴 글꼴 파일(`UFONT`)이 들어 있으므로, **`RUN HDDEMO`**나 **`RUN JEMANG`** 같은 데모 프로그램이나 미리 작성된 BASIC 코드는 **PC 서버 연결 없이 100% 단독으로 화면에 출력**됩니다.
+1. **그리기**: `UFONT`에 약 34,600자가 있으므로 `RUN HDDEMO`, `RUN JEMANG`, 어떤 프로그램의 `&` 문자열이든 Apple II 혼자 그립니다.
+2. **`Ctrl+K`로 입력 (온보드, 기본)**:
+   - `]` 프롬프트에서 `10 & "`까지 치고 **`Ctrl+K`** 를 누르면 화면 아래에 `[한]` 입력 줄이 열립니다.
+   - 2벌식으로 칩니다(`gksrmf` → 한글). 조합 중인 글자는 반전으로 보이고, 백스페이스는 자모 하나씩 되돌리며, `Ctrl+K`는 한 ↔ A 전환입니다.
+   - **한자**: `Ctrl+J`(또는 ↓)를 누르면 조합 중인 글자(또는 커서 앞 글자)의 한자 후보가 입력 줄 위에 나옵니다. `1`–`9` 선택, `Space` / → / ↓ 다음 쪽, ← / ↑ 이전 쪽, `Esc` 목록 닫기. 후보는 `UFONT`에서 많이 쓰는 순으로 읽습니다.
+   - **`Return`** 을 누르면 Hex 안전 문자열 `\K…\N`으로 BASIC 줄에 들어가고, **`Esc`** 는 취소입니다. 따옴표(`"`)를 닫고 Return, 그리고 `RUN`.
+   - Caps Lock은 켜져 있든 꺼져 있든 됩니다. ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ(Shift)를 치려면 끕니다.
+3. **필요할 때 SSC로 서버 쓰기**: `POKE 16453,1`이면 `Ctrl+K`가 DOS 3.3 플로피에서처럼 `unicode_server.py`로 갑니다. 일본어 가나·러시아어·그리스어(`Ctrl+L`), PC 입력과 붙여 넣기(`Ctrl+P`)가 이 방식입니다. 터미널 모드(`&`만)와 서버로 그리기(`POKE 16387,0`: 옛한글, 컬러)도 서버가 필요합니다. `POKE 16453,0`이면 다시 온보드입니다.
+   - **SSC 설정**: **AppleWin**: **`F10`(설정) → [Serial] 탭**에서 **Slot 2 Serial Port** = **`TCP`**(1977번 포트). **실기**: **Slot 2에 Super Serial Card**, PC와 케이블 연결, `python unicode_server.py --com COMx`(AppleWin이면 `python unicode_server.py`).
 
-2. **Apple II 키보드로 직접 한글·다국어 입력하기 (`Ctrl+K`) — Super Serial Card (Slot 2) 및 PC 서버 필수**:
-   - **Super Serial Card가 필요한 이유**:
-     Apple II 상주 6502 드라이버(`UNICODE.BIN`)는 약 5KB의 초경량 입출력 스텁입니다. 2벌식 조합 오토마타(초성·중성·종성 결합, 이중모음/받침 처리, 백스페이스 분해, 한자 사전, 가나 로마자 매핑) 엔진은 PC 호스트 서버(`unicode_server.py`)가 처리합니다. 키보드를 누를 때마다 **Slot 2의 Super Serial Card (6551 ACIA 통신 칩)** 를 통해 PC로 키 코드를 전송하고, 서버가 조합한 결과를 시리얼로 Apple II에 되돌려주어 화면에 그립니다.
-   - **따라서 Super Serial Card 통신 경로가 없으면 실시간 다국어 타이핑이 불가능합니다.**
-   - **한글 및 다국어를 입력하는 방법**:
-     1. **통신 준비 (Super Serial Card 활성화)**:
-        - **AppleWin (에뮬레이터)**: **Configuration(F10) → [Serial] 탭 → Slot 2 Serial Port**를 **`TCP`** (기본 포트 1977)로 설정합니다. (가상 Super Serial Card가 활성화됩니다.)
-        - **Apple II 실기**: 본체 **Slot 2에 Super Serial Card (SSC)** 를 장착하고 RS-232/USB 시리얼 케이블로 PC와 연결합니다.
-     2. **PC 서버 실행**: PC 터미널에서 `python unicode_server.py`를 실행하여 Apple II와 연결합니다 (실기는 `--com COMx`).
-     3. **BASIC 코드에서 입력**:
-        - `]` 프롬프트에서 `10 & "` 를 입력하고, 따옴표 뒤에서 **`Ctrl+K`** 를 누릅니다.
-        - 하단에 `[한]` 그래픽 입력창이 열리면 2벌식 타자(예: `gksrmf` → 한글)를 칩니다.
-        - `Ctrl+J` (또는 아래 화살표 ↓)를 누르면 한자 변환 목록이 뜨며 `1`~`9`로 선택할 수 있습니다.
-        - 일본어 가나, 러시아어, 그리스어를 치려면 `Ctrl+L`로 언어를 전환합니다 (`[한]` → `[あ]` → `[ア]` → `[Я]` → `[Ω]`).
-        - 입력을 마친 뒤 **`Return`** 을 누르면 BASIC 입력 줄에 Hex 안전 인코딩(`\K한글\N`)이 자동으로 채워집니다.
-        - 따옴표(`"`)를 닫고 `Enter`를 친 뒤 **`RUN`** 을 실행하면 화면에 출력됩니다.
-     4. **대화형 전체화면 터미널 모드**:
-        - `]` 프롬프트에서 **`&`** 만 입력하고 `Enter`를 치면 280×192 전체화면 그래픽 터미널로 진입합니다.
-        - 여기서 메모장처럼 바로 2벌식 한글을 타이핑할 수 있으며, `Ctrl+K` 또는 백틱(``` ` ```)으로 한/영 전환을 하고 `ESC`로 빠져나옵니다.
-     5. **PC 클립보드 붙여넣기 (`Ctrl+P`)**:
-        - `Ctrl+K` 입력창에서 `Ctrl+P`를 누르면 PC 콘솔/팝업창이 열려 긴 한글 문장이나 한자를 직접 붙여넣을 수 있습니다.
+![AppleWin에서 서버 없이 온보드 Ctrl+J: 입력 줄 위의 '한' 한자 후보](docs/images/onboard_hanja.png)
 
 ---
 

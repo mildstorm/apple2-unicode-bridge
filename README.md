@@ -23,7 +23,7 @@ The original Apple II hardware is constrained by its 1970s character generator R
 3. **Applesoft BASIC `&` (Ampersand) Integration**: Easily embed and execute multilingual strings directly in standard Applesoft BASIC programs using syntax like `10 & "\KHello World / 한글 / 漢字 / Привет / こんにちは\N"`.
 4. **Hex-Safe Encoding Pipeline**: Prevents BASIC token collisions ($80–$EA) and `?SYNTAX ERROR` issues caused by Apple II 8-bit parsing conventions and Caps Lock states.
 5. **Interactive Full-Screen Terminal**: Provides a real-time 280×192 graphic console with interactive keyboard input, IME support, and automatic word wrapping.
-6. **Typing on the Apple II Keyboard**: `Ctrl+K` while writing BASIC opens an input line for 2-Bul-Sik Hangul with Hanja conversion, Japanese kana, Russian and Greek, composed the way the Windows IMEs do (see [Ctrl+K](#2-interactive-ctrlk-input-2-bul-sik-hanja-kana-russian-greek)).
+6. **Typing on the Apple II Keyboard**: `Ctrl+K` while writing BASIC opens an input line for 2-Bul-Sik Hangul with Hanja conversion, composed the way the Windows IMEs do, on the Apple II itself from the ProDOS hard disk (no PC needed), or by the PC server over the SSC, which also does Japanese kana, Russian and Greek (see [Ctrl+K](#2-interactive-ctrlk-input-2-bul-sik-hanja-kana-russian-greek)).
 7. **Hard Disk Font for Real Hardware**: On a ProDOS hard disk the driver reads every glyph (Hangul, Hanja, kana, Greek, Cyrillic, symbols) from a font file, so a real Apple II shows Unicode with no PC connected (see [ProDOS Hard Disk](#-prodos-hard-disk-the-whole-font-no-server)).
 
 ---
@@ -171,12 +171,17 @@ When executed (`RUN`), the driver switches to HGR graphics mode and renders high
 ### 2. Interactive `Ctrl+K` Input (2-Bul-Sik, Hanja, Kana, Russian, Greek)
 
 > [!IMPORTANT]
-> **Super Serial Card (Slot 2) & PC Server Required for Multilingual Input**
-> - **Why it is required**: The Apple II resident 6502 driver (`$4000`, ~5 KB) is an ultra-lightweight I/O stub. It intentionally does not embed the complex 2-Bul-Sik Korean automata (choseong/jungseong/jongseong combination, double vowel/consonant rules, backspace jamo decomposition, Hanja dictionary lookup, romaji-to-kana tables). Every keystroke typed on the Apple II keyboard is dispatched across **Slot 2 Super Serial Card (6551 ACIA communication chip)** to the host PC server (`unicode_server.py`), which composes the typography in real time and streams rendered glyph bitmaps back to the Apple II screen.
-> - **Without a Super Serial Card (or emulator serial emulation), typing live Hangul or multilingual text on the Apple II keyboard is not possible.**
-> - **Setup instructions**:
->   - **AppleWin (Emulator)**: Go to **Configuration (F10) → [Serial] tab** and check **Slot 2 Serial Port** as **`TCP`** (default port 1977). No physical hardware required.
->   - **Real Apple II Hardware**: Install a physical **Super Serial Card (SSC)** in **Slot 2**, connect via RS-232 / USB-serial cable to your PC, and start `python unicode_server.py --com COMx`.
+> **Two ways to compose: on the Apple II (default) or on the PC through the Super Serial Card**
+>
+> | | **Onboard** (default) | **SSC** (`POKE 16453,1`) |
+> | :--- | :--- | :--- |
+> | Where it composes | The 6502 driver itself | The PC server (`unicode_server.py`) |
+> | Needs | The ProDOS hard disk (`unicode.hdv`, its `UFONT`) | A Super Serial Card in slot 2 and the server |
+> | Modes | 한 2-Bul-Sik with Hanja (`Ctrl+J`), A | 한, あ, ア, Я, Ω, A, `Ctrl+P` (PC input), terminal mode |
+>
+> - Under ProDOS with `UFONT`, `Ctrl+K` composes **on the Apple II with no serial card or PC**: the driver holds the 2-Bul-Sik automaton (the same rules as the server's, checked against the same cases by `tools/test_onboard_ime.py`), draws the line from `UFONT`, and reads the Hanja candidates from it.
+> - `POKE 16453,1` hands `Ctrl+K` to the PC server over the SSC (kana, Russian, Greek, `Ctrl+P`), `POKE 16453,0` brings it back. Without `UFONT` (the DOS 3.3 floppy `unicode.dsk`) it is always the server.
+> - **SSC setup**: **AppleWin**: **Configuration (F10) → [Serial] tab**, **Slot 2 Serial Port** set to **`TCP`** (port 1977). **Real Apple II**: a **Super Serial Card** in **Slot 2**, an RS-232 / USB-serial cable to the PC, and `python unicode_server.py --com COMx`.
 
 While typing a BASIC program, press **`Ctrl+K`** and type on the Apple II keyboard. An input line opens on the last HGR row in mixed mode, with the four text lines (and so the BASIC line, once it is near the bottom) below it. As in the Windows IMEs, what is being composed is shown inverse and commits once the next key cannot join it.
 
@@ -191,9 +196,9 @@ While typing a BASIC program, press **`Ctrl+K`** and type on the Apple II keyboa
 | Key | Action |
 | :--- | :--- |
 | `Ctrl+K` | Language ↔ A (the 한/영 key) |
-| `Ctrl+L` | Next language: 한 → あ → ア → Я → Ω (`--ime-langs ko,hira,kata,ru,el` picks and orders them; the first is the default) |
+| `Ctrl+L` | Next language: 한 → あ → ア → Я → Ω (`--ime-langs ko,hira,kata,ru,el` picks and orders them; the first is the default). SSC mode only |
 | `Ctrl+J` (↓) | **Hanja** for the syllable being composed, or the one before the cursor. The candidates (8,649 Hanja for 486 readings, most common first) appear on the row above: `1`–`9` picks, `Space` / → / ↓ next page, ← / ↑ previous, `Return` the first, `Esc` closes the list |
-| `Ctrl+P` | PC input (console, or a window with `--popup`): anything else, typed with the PC's own IME or pasted, is added to the line |
+| `Ctrl+P` | PC input (console, or a window with `--popup`): anything else, typed with the PC's own IME or pasted, is added to the line. SSC mode only |
 | `Return` | Puts the line into BASIC as hex-safe `\K…\N` |
 | `Esc` | Cancels |
 
@@ -205,7 +210,9 @@ While typing a BASIC program, press **`Ctrl+K`** and type on the Apple II keyboa
 
 Hanja are converted a syllable at a time, and kana stay kana (there is no kana-to-kanji conversion; use `Ctrl+P` for kanji). The Hanja table `hanja_table.txt` is built from the Unicode Han Database by `tools/build_hanja_table.py`.
 
-`python unicode_server.py --pc-input` brings back the old behaviour, where `Ctrl+K` opens the PC input straight away. Tests: `python tools/test_dubeol_ime.py` (2-Bul-Sik rules), `python tools/test_ime_engines.py` (kana, Russian, Greek, Hanja, mode keys) and `python tools/test_ime_live.py` (types lines in AppleWin and saves screenshots).
+The onboard line guesses Caps Lock the same way from the letter's case (it never sees Shift either).
+
+`python unicode_server.py --pc-input` makes SSC mode open the PC input straight away. Tests: `python tools/test_dubeol_ime.py` (2-Bul-Sik rules), `python tools/test_onboard_ime.py` (the driver's 6502 automaton on the same cases, in py65), `python tools/test_ime_engines.py` (kana, Russian, Greek, Hanja, mode keys) and `python tools/test_ime_live.py` (types lines in AppleWin and saves screenshots).
 
 ### 3. Hex-Safe Stream Protocol (`\K ... \N`)
 Standard Apple II line input (`GETLN`) and Applesoft keyword parsing (`PARSE`) treat byte values `$80`–`$FF` as internal BASIC tokens or control codes. Raw UTF-8 byte streams cause immediate syntax errors.
@@ -351,8 +358,8 @@ RUN DEMO
 | :--- | :--- | :--- |
 | DOS 3.3 `unicode.dsk` + server | `$6000` cache (characters baked in by `build_font_dsk.py`); `POKE 24576,0` sends everything to the server (any character, old Hangul, colour) | Server |
 | DOS 3.3 `unicode.dsk`, no server | `$6000` cache only | — |
-| ProDOS hard disk, no server | `UFONT`: any of its 34,596 characters | — |
-| ProDOS hard disk + server | `UFONT`; `POKE 16387,0` sends them to the server | Server |
+| ProDOS hard disk, no server | `UFONT`: any of its 34,596 characters | `Ctrl+K` onboard (2-Bul-Sik, Hanja); no terminal mode |
+| ProDOS hard disk + server | `UFONT`; `POKE 16387,0` sends them to the server | `Ctrl+K` onboard; `POKE 16453,1` the server. Terminal mode: server |
 | No disk of fonts, no serial card | `& "/TAPE"` loads a cache through the cassette input ([Cassette Input](#-cassette-input-the-font-cache-without-a-serial-card-or-disk)) | — |
 
 ---
@@ -459,36 +466,27 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 | `16387` (`$4003`) | 1 when `UFONT` opened at `CALL 16384`. `POKE 16387,0` sends `&` strings to the server again (old Hangul composition, coloured text) |
 | `16388` (`$4004`) | The font file's pathname: a length byte, then up to 63 characters (default `UFONT`); `CALL 16384` again after changing it |
 | `16452` (`$4044`) | The ProDOS error of the last failed font-file call (e.g. 70 = file not found), 0 if none |
+| `16453` (`$4045`) | What `Ctrl+K` composes with: 0 on the Apple II (default, needs `UFONT`), 1 the PC server over the SSC |
 
-Without the server, old Hangul syllables (which need HarfBuzz) and the coloured-text rasteriser are not available, and `Ctrl+K` needs the server to compose. With the server connected, `Ctrl+K` works under ProDOS as under DOS 3.3. `python tools/test_hdd_live.py [image]` boots an image in AppleWin, runs both demos and puts AppleWin's settings back afterwards.
+Under ProDOS the driver takes its 1 KB file buffer from BASIC.SYSTEM (`GETBUFR`), so HIMEM drops from 38400 to 37376 (`$9200`). The driver itself fills `$4000`–`$5EFF`.
+
+Without the server, old Hangul syllables (which need HarfBuzz) and the coloured-text rasteriser are not available. `Ctrl+K` composes on the Apple II (2-Bul-Sik and Hanja; see below), or through the server with `POKE 16453,1`. `python tools/test_hdd_live.py [image]` boots an image in AppleWin, runs both demos and puts AppleWin's settings back afterwards.
 
 ### 3. How to Input Korean After Hard-Disk Boot (`unicode.hdv`)
 
-There is an important distinction between **Rendering (Drawing)** and **Typing (Input)** after booting from the hard disk:
+After booting `unicode.hdv`, both drawing and 2-Bul-Sik typing work **with no PC and no serial card**:
 
-1. **Rendering / Drawing Korean & Hanja — Standalone without PC Server**:
-   - Because `unicode.hdv` contains the complete `UFONT` binary (~34,000 glyphs), demo programs like **`RUN HDDEMO`** or **`RUN JEMANG`**, as well as pre-encoded BASIC programs, **render 100% standalone with no PC server running**.
+1. **Drawing**: `UFONT` holds about 34,600 glyphs, so `RUN HDDEMO`, `RUN JEMANG` and any program's `&` strings draw on the Apple II alone.
+2. **Typing with `Ctrl+K` (onboard, the default)**:
+   - At the `]` prompt, type `10 & "` and press **`Ctrl+K`**. The input line opens at the bottom with `[한]`.
+   - Type in 2-Bul-Sik (`gksrmf` → 한글). What is being composed shows inverse; Backspace takes back one jamo; `Ctrl+K` switches 한 ↔ A.
+   - **Hanja**: `Ctrl+J` (or ↓) shows the candidates for the syllable being composed (or the one before the cursor) above the line: `1`–`9` picks, `Space` / → / ↓ next page, ← / ↑ previous, `Esc` closes the list. They are read from `UFONT`, most common first.
+   - **`Return`** puts the line into BASIC as hex-safe `\K…\N`, **`Esc`** cancels. Close the quotes with `"`, press Return, then `RUN`.
+   - Caps Lock may be on or off; turn it off for ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ (Shift).
+3. **With the server over the SSC (when needed)**: `POKE 16453,1`, and `Ctrl+K` goes to `unicode_server.py` as on the DOS 3.3 floppy, for Japanese kana, Russian and Greek (`Ctrl+L`), PC input and paste (`Ctrl+P`). Terminal mode (`&` alone) and drawing through the server (`POKE 16387,0`: old Hangul, colour) need it too. `POKE 16453,0` goes back to onboard.
+   - **SSC setup**: **AppleWin**: **Configuration (F10) → [Serial] tab**, **Slot 2 Serial Port** = **`TCP`** (port 1977). **Real hardware**: a **Super Serial Card** in **Slot 2**, a cable to the PC, `python unicode_server.py --com COMx` (`python unicode_server.py` for AppleWin).
 
-2. **Typing Korean & Multilingual Text on the Apple II Keyboard (`Ctrl+K`) — Super Serial Card (Slot 2) & PC Server Required**:
-   - **Why Super Serial Card is Required**:
-     The resident Apple II 6502 driver (`UNICODE.BIN`) is a compact ~5 KB stub. The real-time 2-Bul-Sik Hangul composition automata (jamo combinator, Hanja dictionary, decomposition on backspace, romaji-to-kana mapping) is handled on the host PC server (`unicode_server.py`). Whenever a key is pressed, the key code is transmitted across **Slot 2 Super Serial Card (6551 ACIA communication chip)** to the PC, and the server returns the composed typography back via serial to render on the screen.
-   - **Without a Super Serial Card communication link, live typing in Hangul or multilingual scripts is impossible.**
-   - **How to Set Up & Type Multilingual Text**:
-     1. **Set Up Communications (Enable Super Serial Card)**:
-        - **AppleWin (Emulator)**: Open **Configuration (F10) → [Serial] tab** and set **Slot 2 Serial Port** to **`TCP`** (default port 1977). This activates the emulated Super Serial Card.
-        - **Real Apple II Hardware**: Install a physical **Super Serial Card (SSC)** in **Slot 2** and connect it to your PC with an RS-232 / USB-serial cable.
-     2. **Start Host Server**: In your PC terminal, run `python unicode_server.py` to establish the connection (use `--com COMx` for real hardware).
-     3. **Type in BASIC**:
-        - At the `]` prompt, type `10 & "` and press **`Ctrl+K`**.
-        - A graphic composition bar opens at the bottom with `[한]`. Type using standard 2-Bul-Sik (e.g. `gksrmf` → 한글).
-        - Press `Ctrl+J` (or down arrow ↓) to convert the syllable to Hanja from the candidate palette (`1`–`9`).
-        - To type Japanese Kana, Russian, or Greek, press `Ctrl+L` to cycle through languages (`[한]` → `[あ]` → `[ア]` → `[Я]` → `[Ω]`).
-        - Press **`Return`** to commit the string into the BASIC line as hex-safe `\K...[HEX]...\N`.
-        - Close the quotes with `"` and press `Enter`, then type **`RUN`** to execute.
-     4. **Interactive Full-Screen Terminal Mode**:
-        - At the `]` prompt, simply type **`&`** and press `Enter` to enter full-screen 280×192 graphics terminal mode. Type directly with real-time Korean composition (`Ctrl+K` or backtick ``` ` ``` to switch Han/Eng, `ESC` to exit).
-     5. **Host PC Paste (`Ctrl+P`)**:
-        - While the `Ctrl+K` bar is open, press `Ctrl+P` to open the PC console/popup and paste text directly.
+![Onboard Ctrl+J in AppleWin, no server: Hanja candidates for 한 above the input line](docs/images/onboard_hanja.png)
 
 ---
 

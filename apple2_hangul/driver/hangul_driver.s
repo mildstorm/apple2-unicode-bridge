@@ -64,7 +64,7 @@ DEVNUM          = $BF30         ; last device ProDOS used
 MLI_READ        = $CA
 MLI_CLOSE       = $CC
 MLI_SET_MARK    = $CE
-HD_IOBUF        = $5C00         ; 1K page-aligned ProDOS file buffer, after the driver
+GETBUFR         = $BEF5         ; BASIC.SYSTEM - A pages of buffer below HIMEM
 
 ; Fixed addresses for BASIC. CALL 16384 still initialises the driver.
     JMP INIT
@@ -77,6 +77,10 @@ HD_PATH     .byte 5
             .dsb 58, 0
 ; $4044 (16452) is the ProDOS error of the last failed font file call, 0 if none
 HD_ERR      .byte 0
+; $4045 (16453) chooses what Ctrl+K types with. 0 composes on the Apple II
+; (2-Bul-Sik and Hanja, needs the font file). 1 uses the PC server over the
+; SSC (also kana, Russian, Greek). Without the font file it is the server.
+IME_SSC     .byte 0
 
 INIT
     LDA #$00
@@ -119,6 +123,17 @@ INIT
     STA VECTIN_LO
     LDA #>MY_KEYIN
     STA VECTIN_HI
+    ; The 1K file buffer for the font file, from BASIC.SYSTEM (once, a second
+    ; CALL 16384 keeps it)
+    LDA HD_OPEN_PARMS+4
+    BNE INIT_HAVE_BUF
+    LDA #4
+    JSR GETBUFR
+    BCS INIT_HOOKED
+    STA HD_OPEN_PARMS+4
+    LDA #$00
+    STA HD_OPEN_PARMS+3
+INIT_HAVE_BUF
     ; Use the font file if it opens
     JSR HD_FULL_PATH
     JSR HD_OPEN
@@ -1318,6 +1333,15 @@ HR_THREE
     LDA KEY_2
     JSR CP_APPEND6
 HR_MARK
+    ; 32 bytes into HD_GLYPH (the onboard input reads other things too)
+    LDA #<HD_GLYPH
+    STA HD_READ_PARMS+2
+    LDA #>HD_GLYPH
+    STA HD_READ_PARMS+3
+    LDA #32
+    STA HD_READ_PARMS+4
+    LDA #$00
+    STA HD_READ_PARMS+5
     ; File position = code point * 32
     LDA CP_LO
     STA HD_MARK_POS
@@ -1332,6 +1356,8 @@ HR_SHIFT
     ROL HD_MARK_POS+2
     DEX
     BNE HR_SHIFT
+; Reads HD_READ_PARMS bytes at HD_MARK_POS. Carry set if it cannot.
+HR_SEEK
     JSR MLI
     .byte MLI_SET_MARK
     .word HD_MARK_PARMS
@@ -1366,6 +1392,1163 @@ CPA_LOOP
     ORA CP_LO
     STA CP_LO
     RTS
+
+; --- Onboard input line (Ctrl+K composed on the Apple II) ---
+; Used when the font file is open and IME_SSC is 0. The same line as the
+; server draws (HGR row 9, Hanja candidates on row 8, mixed mode, the rows
+; put back afterwards), the glyphs read from the font file.
+; Col 0 shows the mode, the Hangul syllable HAN or A. Ctrl+K switches,
+; Ctrl+J (down arrow) shows Hanja for the syllable being composed or the
+; one before the cursor, Return types the line into BASIC as \K..\N hex,
+; Esc cancels.
+; 2-Bul-Sik composes as the Windows IME does (and as KoreanAutomata in
+; unicode_server.py). The syllable is kept as the jamo typed for it in three
+; slots (lead, vowel, tail), each one jamo or a pair. Jamo are numbered from
+; U+3131, 0-29 consonants and 30-50 vowels. Backspace takes back one jamo.
+; Caps Lock is guessed from the case as the server does. An upper-case
+; letter that Shift does nothing for means Caps Lock is on, and the
+; syllable being composed is read again in lower case.
+; The Hanja are in the font file where no glyphs are, at U+D800 * 32. For
+; syllable s (code point - $AC00) 4 bytes at $1B0000 + s*4 give where its
+; list starts (in code points) and how long it is. The lists are 16-bit code
+; points from $1BB000.
+
+OB_IME
+    LDA CUR_COL
+    STA OB_SCOL
+    LDA CUR_ROW
+    STA OB_SROW
+    LDA CUR_COLOR
+    STA OB_SCLR
+    JSR HD_OPEN
+    BCC OB_OPENED
+    JMP CANCEL_PC_INPUT
+OB_OPENED
+    LDA #$00
+    STA OB_NU
+    STA OB_VIEW
+    STA CAND_ON
+    STA OB_CAPS
+    JSR OB_RESET
+    LDA #$00
+    LDX #39
+OB_CLR_DRAWN
+    STA DR_L,X
+    STA DR_H,X
+    STA DR_S,X
+    DEX
+    BPL OB_CLR_DRAWN
+    JSR IME_SHOW
+    LDA #$00
+    STA DRAW_MODE
+    LDA #$03
+    STA CUR_COLOR
+OB_LOOP
+    JSR OB_RENDER
+OB_WAIT
+    LDA KBD
+    BPL OB_WAIT
+    STA KBDSTRB
+    AND #$7F
+    JSR OB_KEY
+    BCC OB_LOOP
+    JSR HD_CLOSE
+    JSR IME_HIDE
+    LDA OB_SCOL
+    STA CUR_COL
+    LDA OB_SROW
+    STA CUR_ROW
+    LDA OB_SCLR
+    STA CUR_COLOR
+    LDA OB_OK
+    BNE OB_EMIT
+    JMP CANCEL_PC_INPUT
+OB_EMIT
+    LDA #$01
+    STA OB_WRITE
+    JSR OB_ENCODE
+    JMP RESTORE_REG
+
+; One key. Carry set when the line is finished (OB_OK 1 Return, 0 Esc).
+OB_KEY
+    STA OB_K
+    LDA CAND_ON
+    BEQ OBK_MAIN
+    JSR CAND_KEY
+    BCS OBK_CONT
+    LDA #$00
+    STA CAND_ON
+OBK_MAIN
+    LDA OB_K
+    CMP #$1B
+    BNE OBK_1
+    LDA #$00
+    STA OB_OK
+    SEC
+    RTS
+OBK_1
+    CMP #$0D
+    BNE OBK_2
+    JSR OB_COMMIT
+    LDA #$01
+    STA OB_OK
+    SEC
+    RTS
+OBK_2
+    CMP #$08
+    BEQ OBK_BS
+    CMP #$7F
+    BEQ OBK_BS
+    CMP #$0B
+    BNE OBK_3
+    JSR OB_COMMIT
+    LDA OB_LANG
+    EOR #$01
+    STA OB_LANG
+    JMP OBK_CONT
+OBK_3
+    CMP #$0A
+    BNE OBK_4
+    JSR OB_HANJA
+    JMP OBK_CONT
+OBK_4
+    CMP #$20
+    BCC OBK_CONT
+    JSR OB_FITS
+    BCS OBK_CONT
+    LDA OB_LANG
+    BNE OBK_ASCII
+    LDA OB_K
+    JSR IS_LETTER
+    BCC OBK_ASCII
+    JSR OB_HANGUL_KEY
+    JMP OBK_CONT
+OBK_ASCII
+    JSR OB_COMMIT
+    LDA OB_K
+    STA CP_LO
+    LDA #$00
+    STA CP_HI
+    JSR OB_ADD_UNIT
+OBK_CONT
+    CLC
+    RTS
+OBK_BS
+    LDA OB_NJ
+    BEQ OBK_BS_UNIT
+    JSR OB_BACK
+    JMP OBK_CONT
+OBK_BS_UNIT
+    LDA OB_NU
+    BEQ OBK_CONT
+    DEC OB_NU
+    JMP OBK_CONT
+
+; Carry set when the line is full (200 bytes of hex, room for one more).
+OB_FITS
+    LDA #$00
+    STA OB_WRITE
+    JSR OB_ENCODE
+    LDA OB_LEN
+    CMP #191
+    RTS
+
+IS_LETTER
+    CMP #'A'
+    BCC IL_NO
+    CMP #'Z'+1
+    BCC IL_YES
+    CMP #'a'
+    BCC IL_NO
+    CMP #'z'+1
+    BCC IL_YES
+IL_NO
+    CLC
+    RTS
+IL_YES
+    SEC
+    RTS
+
+; A letter in 2-Bul-Sik mode, with the Caps Lock guess
+OB_HANGUL_KEY
+    LDA OB_K
+    CMP #'a'
+    BCS OHK_LOWER
+    LDA OB_CAPS
+    BNE OHK_TOLOW
+    LDA OB_K
+    JSR IS_SHIFTED
+    BCS OHK_FEED
+    LDA #$01
+    STA OB_CAPS
+    JSR OB_REFEED
+OHK_TOLOW
+    LDA OB_K
+    ORA #$20
+    STA OB_K
+    JMP OHK_FEED
+OHK_LOWER
+    LDA #$00
+    STA OB_CAPS
+OHK_FEED
+    LDA OB_K
+    STA OB_KK
+    JSR KEY_JAMO
+    STA OB_J
+    JMP OB_FEED
+
+; Carry set for Q W E R T O P (Shift gives them another jamo)
+IS_SHIFTED
+    LDX #6
+ISH_LOOP
+    CMP SHIFT_KEYS,X
+    BEQ ISH_YES
+    DEX
+    BPL ISH_LOOP
+    CLC
+    RTS
+ISH_YES
+    SEC
+    RTS
+
+; Letter in A to its jamo
+KEY_JAMO
+    CMP #'a'
+    BCS KJ_LOW
+    LDX #6
+KJ_SHIFT_LOOP
+    CMP SHIFT_KEYS,X
+    BEQ KJ_SHIFT
+    DEX
+    BPL KJ_SHIFT_LOOP
+    ORA #$20
+KJ_LOW
+    SEC
+    SBC #'a'
+    TAX
+    LDA KEYMAP,X
+    RTS
+KJ_SHIFT
+    LDA SHIFT_JAMO,X
+    RTS
+
+; Read the syllable being composed again with its keys in lower case
+OB_REFEED
+    LDX #$00
+ORF_COPY
+    CPX OB_NJ
+    BEQ ORF_GO
+    LDA OB_KEYS,X
+    ORA #$20
+    STA OB_TK,X
+    INX
+    JMP ORF_COPY
+ORF_GO
+    STX OB_TN
+    JSR OB_RESET
+    LDA #$00
+    STA OB_TI
+ORF_LOOP
+    LDX OB_TI
+    CPX OB_TN
+    BEQ ORF_END
+    LDA OB_TK,X
+    STA OB_KK
+    JSR KEY_JAMO
+    STA OB_J
+    JSR OB_FEED
+    INC OB_TI
+    JMP ORF_LOOP
+ORF_END
+    RTS
+
+OB_RESET
+    LDA #$00
+    STA SL_CNT
+    STA SL_CNT+1
+    STA SL_CNT+2
+    STA OB_NJ
+    RTS
+
+; Commit the syllable being composed (if any) to the line
+OB_COMMIT
+    JSR OB_CURRENT
+    BCC OBC_RESET
+    JSR OB_ADD_UNIT
+OBC_RESET
+    JMP OB_RESET
+
+OB_ADD_UNIT
+    LDX OB_NU
+    CPX #80
+    BCS OAU_RET
+    LDA CP_LO
+    STA OB_UL,X
+    LDA CP_HI
+    STA OB_UH,X
+    INC OB_NU
+OAU_RET
+    RTS
+
+; Take back the last jamo typed
+OB_BACK
+    LDX OB_NJ
+    BEQ OBB_RET
+    DEX
+    STX OB_NJ
+    LDA OB_ORDER,X
+    TAX
+    DEC SL_CNT,X
+OBB_RET
+    RTS
+
+; Add jamo X with key Y to slot A
+OB_ADD3
+    STA OB_AS
+    STX OB_AJ
+    STY OB_AK
+    LDX OB_AS
+    LDA OB_AS
+    ASL
+    CLC
+    ADC SL_CNT,X
+    TAY
+    LDA OB_AJ
+    STA SL_J,Y
+    INC SL_CNT,X
+    LDX OB_NJ
+    LDA OB_AS
+    STA OB_ORDER,X
+    LDA OB_AK
+    STA OB_KEYS,X
+    INC OB_NJ
+    RTS
+
+; Jamo A (first) and X (second) combined in A, carry set if they pair
+PAIR
+    STA OB_PA
+    STX OB_PB
+    LDY #$00
+PR_LOOP
+    LDA PAIRS,Y
+    CMP #$FF
+    BEQ PR_NO
+    CMP OB_PA
+    BNE PR_NEXT
+    LDA PAIRS+1,Y
+    CMP OB_PB
+    BNE PR_NEXT
+    LDA PAIRS+2,Y
+    SEC
+    RTS
+PR_NEXT
+    INY
+    INY
+    INY
+    JMP PR_LOOP
+PR_NO
+    CLC
+    RTS
+
+; Feed jamo OB_J typed with key OB_KK
+OB_FEED
+    LDA OB_J
+    CMP #30
+    BCS OBF_VOWEL
+    JMP OBF_CONS
+OBF_VOWEL
+    LDA SL_CNT+2
+    BEQ OBF_V_NOTAIL
+    ; The last final consonant leads the new syllable
+    DEC SL_CNT+2
+    LDX SL_CNT+2
+    LDA SL_J+4,X
+    STA OB_MJ
+    DEC OB_NJ
+    LDX OB_NJ
+    LDA OB_KEYS,X
+    STA OB_MK
+    JSR OB_COMMIT
+    LDA #0
+    LDX OB_MJ
+    LDY OB_MK
+    JSR OB_ADD3
+    JMP OBF_ADD_VOWEL
+OBF_V_NOTAIL
+    LDA SL_CNT+1
+    BEQ OBF_V_NOVOW
+    CMP #1
+    BNE OBF_V_RESTART
+    LDA SL_J+2
+    LDX OB_J
+    JSR PAIR
+    BCS OBF_ADD_VOWEL
+OBF_V_RESTART
+    JSR OB_COMMIT
+    JMP OBF_ADD_VOWEL
+OBF_V_NOVOW
+    LDA SL_CNT
+    CMP #2
+    BNE OBF_ADD_VOWEL
+    ; Two consonants typed alone, then a vowel. The first stays alone, the
+    ; second leads.
+    LDA SL_J+1
+    STA OB_MJ
+    LDA OB_KEYS+1
+    STA OB_MK
+    LDA SL_J
+    JSR JAMO_CP
+    JSR OB_ADD_UNIT
+    JSR OB_RESET
+    LDA #0
+    LDX OB_MJ
+    LDY OB_MK
+    JSR OB_ADD3
+OBF_ADD_VOWEL
+    LDA #1
+    LDX OB_J
+    LDY OB_KK
+    JMP OB_ADD3
+OBF_CONS
+    LDA SL_CNT+1
+    BNE OBF_C_VOW
+    LDA SL_CNT
+    BEQ OBF_C_LEAD
+    CMP #1
+    BNE OBF_C_RESTART
+    LDA SL_J
+    LDX OB_J
+    JSR PAIR
+    BCS OBF_C_LEAD
+OBF_C_RESTART
+    JSR OB_COMMIT
+OBF_C_LEAD
+    LDA #0
+    LDX OB_J
+    LDY OB_KK
+    JMP OB_ADD3
+OBF_C_VOW
+    LDA SL_CNT
+    BEQ OBF_C_RESTART
+    LDA SL_CNT+2
+    BNE OBF_C_TAIL2
+    LDX OB_J
+    LDA JONG_IDX,X
+    CMP #$FF
+    BEQ OBF_C_RESTART
+OBF_C_ADDTAIL
+    LDA #2
+    LDX OB_J
+    LDY OB_KK
+    JMP OB_ADD3
+OBF_C_TAIL2
+    CMP #1
+    BNE OBF_C_RESTART
+    LDA SL_J+4
+    LDX OB_J
+    JSR PAIR
+    BCS OBF_C_ADDTAIL
+    JMP OBF_C_RESTART
+
+JAMO_CP
+    CLC
+    ADC #$31
+    STA CP_LO
+    LDA #$31
+    STA CP_HI
+    RTS
+
+; The character being composed in CP_LO/CP_HI, carry set if there is one
+OB_CURRENT
+    LDA SL_CNT+1
+    BNE OC_VOW
+    LDA SL_CNT
+    BNE OC_LEAD
+    CLC
+    RTS
+OC_LEAD
+    LDA SL_J
+    LDX SL_CNT
+    CPX #2
+    BNE OC_JAMO
+    LDX SL_J+1
+    JSR PAIR
+OC_JAMO
+    JSR JAMO_CP
+    SEC
+    RTS
+OC_VOW
+    LDA SL_J+2
+    LDX SL_CNT+1
+    CPX #2
+    BNE OC_V1
+    LDX SL_J+3
+    JSR PAIR
+OC_V1
+    STA OB_V
+    LDA SL_CNT
+    BNE OC_SYL
+    LDA OB_V
+    JMP OC_JAMO
+OC_SYL
+    LDA #$00
+    STA OB_JONG
+    LDA SL_CNT+2
+    BEQ OC_NOJONG
+    LDA SL_J+4
+    LDX SL_CNT+2
+    CPX #2
+    BNE OC_J1
+    LDX SL_J+5
+    JSR PAIR
+OC_J1
+    TAX
+    LDA JONG_IDX,X
+    STA OB_JONG
+OC_NOJONG
+    ; $AC00 + (lead * 21 + vowel) * 28 + tail
+    LDA OB_V
+    SEC
+    SBC #30
+    STA OB_NL
+    LDA #$00
+    STA OB_NH
+    LDX SL_J
+    LDA CHO_IDX,X
+    TAX
+    BEQ OC_MUL
+OC_21
+    CLC
+    LDA OB_NL
+    ADC #21
+    STA OB_NL
+    BCC OC_21_NC
+    INC OB_NH
+OC_21_NC
+    DEX
+    BNE OC_21
+OC_MUL
+    ASL OB_NL
+    ROL OB_NH
+    ASL OB_NL
+    ROL OB_NH
+    LDA OB_NL
+    STA OB_ML
+    LDA OB_NH
+    STA OB_MH
+    ASL OB_NL
+    ROL OB_NH
+    ASL OB_NL
+    ROL OB_NH
+    ASL OB_NL
+    ROL OB_NH
+    SEC
+    LDA OB_NL
+    SBC OB_ML
+    STA CP_LO
+    LDA OB_NH
+    SBC OB_MH
+    STA CP_HI
+    CLC
+    LDA CP_LO
+    ADC OB_JONG
+    STA CP_LO
+    LDA CP_HI
+    ADC #$AC
+    STA CP_HI
+    SEC
+    RTS
+
+; The line, and the candidates above it, as \K..\N hex. OB_WRITE 1 types it
+; into the input buffer, 0 only counts it (OB_LEN).
+OB_ENCODE
+    LDA #$00
+    STA OB_LEN
+    STA OB_RUN
+    STA OB_I
+OBE_LOOP
+    LDX OB_I
+    CPX OB_NU
+    BCS OBE_CUR
+    LDA OB_UL,X
+    STA CP_LO
+    LDA OB_UH,X
+    STA CP_HI
+    JSR OBE_ONE
+    INC OB_I
+    JMP OBE_LOOP
+OBE_CUR
+    JSR OB_CURRENT
+    BCC OBE_END
+    JSR OBE_ONE
+OBE_END
+    LDA OB_RUN
+    BEQ OBE_RET
+    LDA #'\\'
+    JSR OBE_PUT
+    LDA #'N'
+    JMP OBE_PUT
+OBE_RET
+    RTS
+OBE_ONE
+    LDA CP_HI
+    BNE OBE_MULTI
+    LDA CP_LO
+    BMI OBE_MULTI
+    LDA OB_RUN
+    BEQ OBE_ASCII
+    LDA #$00
+    STA OB_RUN
+    LDA #'\\'
+    JSR OBE_PUT
+    LDA #'N'
+    JSR OBE_PUT
+OBE_ASCII
+    LDA CP_LO
+    JMP OBE_PUT
+OBE_MULTI
+    LDA OB_RUN
+    BNE OBE_UTF8
+    INC OB_RUN
+    LDA #'\\'
+    JSR OBE_PUT
+    LDA #'K'
+    JSR OBE_PUT
+OBE_UTF8
+    ; OB_T = code point >> 6
+    LDA CP_HI
+    STA OB_T
+    LDA CP_LO
+    ASL
+    ROL OB_T
+    ASL
+    ROL OB_T
+    LDA CP_HI
+    CMP #$08
+    BCS OBE_3
+    LDA OB_T
+    ORA #$C0
+    JSR OBE_HEX
+    JMP OBE_LAST
+OBE_3
+    LDA CP_HI
+    LSR
+    LSR
+    LSR
+    LSR
+    ORA #$E0
+    JSR OBE_HEX
+    LDA OB_T
+    AND #$3F
+    ORA #$80
+    JSR OBE_HEX
+OBE_LAST
+    LDA CP_LO
+    AND #$3F
+    ORA #$80
+OBE_HEX
+    PHA
+    LSR
+    LSR
+    LSR
+    LSR
+    JSR OBE_NIB
+    PLA
+    AND #$0F
+OBE_NIB
+    CMP #10
+    BCC OBE_DIGIT
+    ADC #6
+OBE_DIGIT
+    ADC #'0'
+OBE_PUT
+    LDX OB_WRITE
+    BEQ OBP_COUNT
+    LDX BUF_HEAD
+    STA BUF_START,X
+    INC BUF_HEAD
+OBP_COUNT
+    INC OB_LEN
+    RTS
+
+; Draw the line (row 9) and the candidates (row 8), the cells that changed
+OB_RENDER
+    LDA OB_NU
+    CLC
+    ADC #1
+    STA OB_L
+    SEC
+    SBC OB_VIEW
+    BCC OBR_FIX
+    BEQ OBR_FIX
+    CMP #20
+    BCC OBR_VIEW_OK
+OBR_FIX
+    ; Page by half a line
+    LDA OB_L
+    SEC
+    SBC #9
+    BCS OBR_SETV
+    LDA #0
+OBR_SETV
+    STA OB_VIEW
+OBR_VIEW_OK
+    LDA #9
+    STA OB_ROW
+    LDA #0
+    STA OB_COL
+    LDA #1
+    STA OB_STY
+    LDA OB_LANG
+    BEQ OBR_HAN
+    LDA #'A'
+    STA CP_LO
+    LDA #0
+    STA CP_HI
+    JMP OBR_MODE
+OBR_HAN
+    LDA #$5C
+    STA CP_LO
+    LDA #$D5
+    STA CP_HI
+OBR_MODE
+    JSR OB_CELL
+    LDA #1
+    STA OB_COL
+OBR_TEXT
+    LDA OB_VIEW
+    CLC
+    ADC OB_COL
+    SEC
+    SBC #1
+    STA OB_I2
+    CMP OB_NU
+    BCS OBR_NOTUNIT
+    TAX
+    LDA OB_UL,X
+    STA CP_LO
+    LDA OB_UH,X
+    STA CP_HI
+    LDA #0
+    STA OB_STY
+    JMP OBR_PUT
+OBR_NOTUNIT
+    LDA OB_I2
+    CMP OB_NU
+    BNE OBR_EMPTY
+    JSR OB_CURRENT
+    BCC OBR_CURSOR
+    LDA #1
+    STA OB_STY
+    JMP OBR_PUT
+OBR_CURSOR
+    LDA #0
+    STA CP_LO
+    STA CP_HI
+    LDA #2
+    STA OB_STY
+    JMP OBR_PUT
+OBR_EMPTY
+    LDA #0
+    STA CP_LO
+    STA CP_HI
+    STA OB_STY
+OBR_PUT
+    JSR OB_CELL
+    INC OB_COL
+    LDA OB_COL
+    CMP #20
+    BCC OBR_TEXT
+    LDA #8
+    STA OB_ROW
+    LDA #0
+    STA OB_COL
+OBR_CAND
+    LDA #0
+    STA CP_LO
+    STA CP_HI
+    STA OB_STY
+    LDA CAND_ON
+    BEQ OBR_CPUT
+    LDA OB_COL
+    CMP #18
+    BCS OBR_ARROW
+    LSR
+    STA OB_T
+    CMP CAND_N
+    BCS OBR_CPUT
+    LDA OB_COL
+    AND #1
+    BNE OBR_HANJA_CELL
+    LDA OB_T
+    CLC
+    ADC #'1'
+    STA CP_LO
+    LDA #1
+    STA OB_STY
+    JMP OBR_CPUT
+OBR_HANJA_CELL
+    LDA OB_T
+    ASL
+    TAX
+    LDA CAND_CP,X
+    STA CP_LO
+    LDA CAND_CP+1,X
+    STA CP_HI
+    JMP OBR_CPUT
+OBR_ARROW
+    BNE OBR_RIGHT
+    LDA CAND_FIRST
+    BEQ OBR_CPUT
+    LDA #'<'
+    STA CP_LO
+    JMP OBR_CPUT
+OBR_RIGHT
+    JSR CAND_MORE
+    BCC OBR_CPUT
+    LDA #'>'
+    STA CP_LO
+OBR_CPUT
+    JSR OB_CELL
+    INC OB_COL
+    LDA OB_COL
+    CMP #20
+    BCC OBR_CAND
+    RTS
+
+; Cell OB_COL of row OB_ROW to CP_LO/CP_HI in style OB_STY (0 plain,
+; 1 inverse, 2 underline cursor), unless it already shows that
+OB_CELL
+    LDX OB_COL
+    LDA OB_ROW
+    CMP #9
+    BEQ OCL_IDX
+    TXA
+    CLC
+    ADC #20
+    TAX
+OCL_IDX
+    LDA CP_LO
+    CMP DR_L,X
+    BNE OCL_DRAW
+    LDA CP_HI
+    CMP DR_H,X
+    BNE OCL_DRAW
+    LDA OB_STY
+    CMP DR_S,X
+    BNE OCL_DRAW
+    RTS
+OCL_DRAW
+    LDA CP_LO
+    STA DR_L,X
+    LDA CP_HI
+    STA DR_H,X
+    LDA OB_STY
+    STA DR_S,X
+    LDA CP_LO
+    ORA CP_HI
+    BEQ OCL_BLANK
+    JSR HR_MARK
+    BCC OCL_STYLE
+OCL_BLANK
+    LDX #31
+    LDA #0
+OCL_ZERO
+    STA HD_GLYPH,X
+    DEX
+    BPL OCL_ZERO
+OCL_STYLE
+    LDA OB_STY
+    BEQ OCL_PUT
+    CMP #1
+    BNE OCL_CURSOR
+    LDX #31
+OCL_INV
+    LDA HD_GLYPH,X
+    EOR #$7F
+    STA HD_GLYPH,X
+    DEX
+    BPL OCL_INV
+    JMP OCL_PUT
+OCL_CURSOR
+    LDX #28
+OCL_UNDER
+    LDA HD_GLYPH,X
+    ORA #$7F
+    STA HD_GLYPH,X
+    INX
+    CPX #32
+    BNE OCL_UNDER
+OCL_PUT
+    LDA OB_COL
+    ASL
+    STA CUR_COL
+    LDA OB_ROW
+    STA CUR_ROW
+    LDA #<HD_GLYPH
+    STA SRC_LO
+    LDA #>HD_GLYPH
+    STA SRC_HI
+    JMP RENDER_FROM_SRC
+
+; Carry set for a precomposed Hangul syllable in CP_LO/CP_HI
+IS_SYL
+    LDA CP_HI
+    CMP #$AC
+    BCC ISY_NO
+    CMP #$D8
+    BCS ISY_NO
+    CMP #$D7
+    BNE ISY_YES
+    LDA CP_LO
+    CMP #$A4
+    BCS ISY_NO
+ISY_YES
+    SEC
+    RTS
+ISY_NO
+    CLC
+    RTS
+
+OH_RET0
+    RTS
+
+; Ctrl+J. Hanja for the syllable being composed, else the one before it.
+OB_HANJA
+    LDA OB_LANG
+    BNE OH_RET0
+    JSR OB_CURRENT
+    BCC OH_LAST
+    JSR IS_SYL
+    BCC OH_LAST
+    LDA #0
+    STA CAND_SRC
+    JMP OH_LOOKUP
+OH_LAST
+    LDX OB_NU
+    BEQ OH_RET0
+    DEX
+    LDA OB_UL,X
+    STA CP_LO
+    LDA OB_UH,X
+    STA CP_HI
+    JSR IS_SYL
+    BCC OH_RET
+    LDA #1
+    STA CAND_SRC
+OH_LOOKUP
+    ; $1B0000 + (code point - $AC00) * 4
+    LDA CP_LO
+    STA HD_MARK_POS
+    LDA CP_HI
+    SEC
+    SBC #$AC
+    STA HD_MARK_POS+1
+    LDA #0
+    STA HD_MARK_POS+2
+    ASL HD_MARK_POS
+    ROL HD_MARK_POS+1
+    ROL HD_MARK_POS+2
+    ASL HD_MARK_POS
+    ROL HD_MARK_POS+1
+    ROL HD_MARK_POS+2
+    LDA HD_MARK_POS+2
+    CLC
+    ADC #$1B
+    STA HD_MARK_POS+2
+    LDA #<CAND_HDR
+    STA HD_READ_PARMS+2
+    LDA #>CAND_HDR
+    STA HD_READ_PARMS+3
+    LDA #4
+    STA HD_READ_PARMS+4
+    LDA #0
+    STA HD_READ_PARMS+5
+    JSR HR_SEEK
+    BCS OH_RET
+    LDA CAND_HDR+2
+    BEQ OH_RET
+    STA CAND_CNT
+    LDA CAND_HDR
+    STA CAND_OFF
+    LDA CAND_HDR+1
+    STA CAND_OFF+1
+    LDA #0
+    STA CAND_FIRST
+    JSR CAND_LOAD
+    BCS OH_RET
+    LDA #1
+    STA CAND_ON
+OH_RET
+    RTS
+
+; The page from CAND_FIRST into CAND_CP (CAND_N of them)
+CAND_LOAD
+    LDA CAND_CNT
+    SEC
+    SBC CAND_FIRST
+    CMP #9
+    BCC CL_N
+    LDA #9
+CL_N
+    STA CAND_N
+    LDA CAND_OFF
+    CLC
+    ADC CAND_FIRST
+    STA HD_MARK_POS
+    LDA CAND_OFF+1
+    ADC #0
+    STA HD_MARK_POS+1
+    LDA #0
+    STA HD_MARK_POS+2
+    ASL HD_MARK_POS
+    ROL HD_MARK_POS+1
+    ROL HD_MARK_POS+2
+    CLC
+    LDA HD_MARK_POS+1
+    ADC #$B0
+    STA HD_MARK_POS+1
+    LDA HD_MARK_POS+2
+    ADC #$1B
+    STA HD_MARK_POS+2
+    LDA #<CAND_CP
+    STA HD_READ_PARMS+2
+    LDA #>CAND_CP
+    STA HD_READ_PARMS+3
+    LDA CAND_N
+    ASL
+    STA HD_READ_PARMS+4
+    LDA #0
+    STA HD_READ_PARMS+5
+    JMP HR_SEEK
+
+; Carry set if there is a page after this one
+CAND_MORE
+    LDA CAND_FIRST
+    CLC
+    ADC #9
+    BCS CM_NO
+    CMP CAND_CNT
+    BCS CM_NO
+    SEC
+    RTS
+CM_NO
+    CLC
+    RTS
+
+; Keys while the candidates show. Carry set when the key was used.
+CAND_KEY
+    LDA OB_K
+    CMP #'1'
+    BCC CK_NOTDIG
+    CMP #'9'+1
+    BCS CK_NOTDIG
+    SEC
+    SBC #'1'
+    CMP CAND_N
+    BCS CK_USED
+    JSR CAND_PICK
+    JMP CK_USED
+CK_NOTDIG
+    CMP #$0D
+    BNE CK_1
+    LDA #0
+    JSR CAND_PICK
+    JMP CK_USED
+CK_1
+    CMP #$20
+    BEQ CK_NEXT
+    CMP #$15
+    BEQ CK_NEXT
+    CMP #$0A
+    BEQ CK_NEXT
+    CMP #$08
+    BEQ CK_PREV
+    CMP #$0B
+    BEQ CK_PREV
+    CMP #$1B
+    BNE CK_NO
+    LDA #0
+    STA CAND_ON
+    JMP CK_USED
+CK_NO
+    CLC
+    RTS
+CK_NEXT
+    JSR CAND_MORE
+    BCC CK_FIRST0
+    LDA CAND_FIRST
+    CLC
+    ADC #9
+    STA CAND_FIRST
+    JMP CK_LOAD
+CK_FIRST0
+    LDA #0
+    STA CAND_FIRST
+    JMP CK_LOAD
+CK_PREV
+    LDA CAND_FIRST
+    BEQ CK_LAST
+    SEC
+    SBC #9
+    STA CAND_FIRST
+    JMP CK_LOAD
+CK_LAST
+    LDA #0
+    STA CAND_FIRST
+CKL_LOOP
+    JSR CAND_MORE
+    BCC CK_LOAD
+    LDA CAND_FIRST
+    CLC
+    ADC #9
+    STA CAND_FIRST
+    JMP CKL_LOOP
+CK_LOAD
+    JSR CAND_LOAD
+CK_USED
+    SEC
+    RTS
+
+; Candidate A in place of the syllable it was asked for
+CAND_PICK
+    ASL
+    TAX
+    LDA CAND_CP,X
+    STA CP_LO
+    LDA CAND_CP+1,X
+    STA CP_HI
+    LDA #0
+    STA CAND_ON
+    LDA CAND_SRC
+    BNE CP_REPLACE
+    JSR OB_RESET
+    JMP OB_ADD_UNIT
+CP_REPLACE
+    LDX OB_NU
+    DEX
+    LDA CP_LO
+    STA OB_UL,X
+    LDA CP_HI
+    STA OB_UH,X
+    RTS
+
+; 2-Bul-Sik layout. a to z, then Q W E R T O P with Shift.
+KEYMAP      .byte 16, 47, 25, 22, 6, 8, 29, 38, 32, 34, 30, 50, 48
+            .byte 43, 31, 35, 17, 0, 3, 20, 36, 28, 23, 27, 42, 26
+SHIFT_KEYS  .byte 'Q', 'W', 'E', 'R', 'T', 'O', 'P'
+SHIFT_JAMO  .byte 18, 24, 7, 1, 21, 33, 37
+; Consonant jamo 0-29 as a lead (0-18) and as a tail (1-27), $FF if none
+CHO_IDX     .byte 0, 1, $FF, 2, $FF, $FF, 3, 4, 5, $FF, $FF, $FF, $FF, $FF, $FF
+            .byte $FF, 6, 7, 8, $FF, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18
+JONG_IDX    .byte 1, 2, 3, 4, 5, 6, 7, $FF, 8, 9, 10, 11, 12, 13, 14
+            .byte 15, 16, 17, $FF, 18, 19, 20, 21, 22, $FF, 23, 24, 25, 26, 27
+; Jamo that combine, first, second, combined
+PAIRS       .byte 38, 30, 39,  38, 31, 40,  38, 50, 41,  43, 34, 44
+            .byte 43, 35, 45,  43, 50, 46,  48, 50, 49
+            .byte 0, 20, 2,  3, 23, 4,  3, 29, 5,  8, 0, 9,  8, 16, 10
+            .byte 8, 17, 11,  8, 20, 12,  8, 27, 13,  8, 28, 14,  8, 29, 15
+            .byte 17, 20, 19,  $FF
 
 ; --- PC Streaming & Driver Core ---
 
@@ -1463,6 +2646,13 @@ HANDLE_CTRL_K
     LDA #$00
     STA IME_SHOWN
     STA IME_ESCS
+    ; Onboard unless IME_SSC asks for the server or there is no font file
+    LDA IME_SSC
+    BNE CTRLK_SSC
+    LDA HD_FONT
+    BEQ CTRLK_SSC
+    JMP OB_IME
+CTRLK_SSC
     LDA #$0B
     JSR SEND_BYTE
 
@@ -1974,7 +3164,7 @@ HD_ONLINE_PARMS .byte 2, 0
 HD_FPATH    .dsb 65, 0          ; length byte, then the absolute pathname
 HD_OPEN_PARMS   .byte 3
                 .word HD_FPATH
-                .word HD_IOBUF
+                .word 0         ; the file buffer, from GETBUFR at INIT
 HD_OPEN_REF     .byte 0
 HD_MARK_PARMS   .byte 2, 0
 HD_MARK_POS     .byte 0, 0, 0
@@ -1984,6 +3174,62 @@ HD_READ_PARMS   .byte 4, 0
                 .word 0
 HD_CLOSE_PARMS  .byte 1, 0
 HD_GLYPH    .dsb 32, 0
+; Onboard input line
+OB_SCOL     .byte 0
+OB_SROW     .byte 0
+OB_SCLR     .byte 0
+OB_OK       .byte 0
+OB_K        .byte 0
+OB_KK       .byte 0
+OB_J        .byte 0
+OB_LANG     .byte 0             ; 0 Hangul, 1 A, kept between lines
+OB_CAPS     .byte 0
+SL_CNT      .byte 0, 0, 0       ; jamo in the lead, vowel and tail slots
+SL_J        .byte 0, 0, 0, 0, 0, 0
+OB_NJ       .byte 0             ; jamo of the syllable, in typing order
+OB_ORDER    .dsb 6, 0
+OB_KEYS     .dsb 6, 0
+OB_TK       .dsb 6, 0
+OB_TN       .byte 0
+OB_TI       .byte 0
+OB_AS       .byte 0
+OB_AJ       .byte 0
+OB_AK       .byte 0
+OB_MJ       .byte 0
+OB_MK       .byte 0
+OB_PA       .byte 0
+OB_PB       .byte 0
+OB_V        .byte 0
+OB_JONG     .byte 0
+OB_NL       .byte 0
+OB_NH       .byte 0
+OB_ML       .byte 0
+OB_MH       .byte 0
+OB_NU       .byte 0             ; committed characters
+OB_UL       .dsb 80, 0
+OB_UH       .dsb 80, 0
+OB_VIEW     .byte 0
+OB_L        .byte 0
+OB_I        .byte 0
+OB_I2       .byte 0
+OB_T        .byte 0
+OB_COL      .byte 0
+OB_ROW      .byte 0
+OB_STY      .byte 0
+OB_WRITE    .byte 0
+OB_LEN      .byte 0
+OB_RUN      .byte 0
+DR_L        .dsb 40, 0          ; what each cell of rows 9 and 8 shows
+DR_H        .dsb 40, 0
+DR_S        .dsb 40, 0
+CAND_ON     .byte 0
+CAND_SRC    .byte 0             ; 0 the syllable composed, 1 the one before
+CAND_CNT    .byte 0
+CAND_OFF    .byte 0, 0
+CAND_FIRST  .byte 0
+CAND_N      .byte 0
+CAND_HDR    .byte 0, 0, 0, 0
+CAND_CP     .dsb 18, 0
 
 HGR_LO
 .byte $00, $00, $00, $00, $00, $00, $00, $00, $80, $80, $80, $80, $80, $80, $80, $80
