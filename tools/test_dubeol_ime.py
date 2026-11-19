@@ -60,7 +60,10 @@ CASES = [
 # Keys from an Apple II whose Shift the PC cannot see (guess_caps): Caps
 # Lock sends every letter in upper case.
 CAPS_CASES = [
-    ("RKSKEK", "가나다"),        # Caps Lock: R read as ㄲ until K shows it is on
+    ("RKSKEK", "가나다"),        # Caps Lock is taken to be on, as a //e starts
+    ("EO", "대"),                # E and O alone are ㄷ ㅐ, not ㄸ ㅒ
+    ("EOgks", "떄한"),           # a lower-case letter: Caps Lock was off, E O read again
+    ("Ekfrl", "딸기"),           # Shift+E, then lower case: ㄸ
     ("DKSSUDGKTPDY", "안녕하세요"),
     ("EKFRK", "달가"),
     ("rk", "가"),                # Caps Lock off: case counts

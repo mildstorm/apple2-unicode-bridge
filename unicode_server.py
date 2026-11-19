@@ -853,19 +853,20 @@ class KoreanAutomata:
     the last jamo typed, so ㅘ goes back to ㅗ and 닭 to 달.
 
     guess_caps: for keys from an Apple II whose Shift the PC cannot see.
-    Caps Lock (on by default on a //e) sends every letter in upper case, and
-    only the case tells Shift+R (ㄲ) from R (ㄱ). An upper-case letter that
-    Shift does nothing for in 2-Bul-Sik (any but Q W E R T O P) means Caps
-    Lock is on: from then on letters count as unshifted, and the syllable
-    being composed is read again that way (RK, read as 까, becomes 가 at
-    the K). A lower-case letter means Caps Lock is off, and case counts again.
+    Caps Lock sends every letter in upper case, and only the case tells
+    Shift+R (ㄲ) from R (ㄱ). A //e starts with Caps Lock on, so it is taken
+    to be on: letters count as unshifted (EO is 대). A lower-case letter
+    shows it is off: from then on case counts, and the syllable being
+    composed is read again from its keys as typed (Shift+R then k: ㄱ, then
+    까). An upper-case letter that Shift does nothing for in 2-Bul-Sik (any
+    but Q W E R T O P) shows it is on again.
     """
     SHIFTED = "QWERTOP"
 
     def __init__(self, guess_caps=False):
         self.guess_caps = guess_caps
-        self.caps_on = False
-        self.keys = []    # the keys of the syllable being composed
+        self.caps_on = True           # as a //e starts
+        self.keys = []    # the keys of the syllable being composed, as typed
         self.reset()
 
     def reset(self):
@@ -964,12 +965,22 @@ class KoreanAutomata:
         self.keys = []
         return committed
 
-    def _feed_key(self, key):
+    def _feed_key(self, typed):
+        """Feeds a key as typed, read as unshifted while Caps Lock is guessed on."""
+        key = typed.lower() if self.guess_caps and self.caps_on else typed
         committed = self.feed(DUBEOL_KEYS.get(key) or DUBEOL_KEYS[key.lower()])
         # Every key gives one jamo, so the syllable being composed is made of
         # the last len(order) keys
-        self.keys = (self.keys + [key])[len(self.keys) + 1 - len(self.order):]
+        self.keys = (self.keys + [typed])[len(self.keys) + 1 - len(self.order):]
         return committed
+
+    def _read_again(self):
+        """The syllable being composed, from its keys as typed, with the Caps
+        Lock guess just changed."""
+        again = list(self.keys)
+        self.reset()
+        self.keys = []
+        return "".join(self._feed_key(k) for k in again)
 
     def process_key(self, key):
         """Feeds one keyboard letter. Returns (committed_text, composing_char)."""
@@ -977,17 +988,12 @@ class KoreanAutomata:
             return (self.flush() + key, "")
         committed = ""
         if self.guess_caps and key.isascii() and key.isalpha():
-            if key.islower():
-                self.caps_on = False
-            elif key not in self.SHIFTED and not self.caps_on:
-                self.caps_on = True
-                again = [k.lower() for k in self.keys]
-                self.reset()
-                self.keys = []
-                for k in again:
-                    committed += self._feed_key(k)
-            if self.caps_on:
-                key = key.lower()
+            if key.islower() and self.caps_on:
+                self.caps_on = False            # Caps Lock is off after all
+                committed += self._read_again()
+            elif key.isupper() and key not in self.SHIFTED and not self.caps_on:
+                self.caps_on = True             # Caps Lock is on
+                committed += self._read_again()
         committed += self._feed_key(key)
         return (committed, self.get_current_char())
 
@@ -1317,12 +1323,13 @@ class AppleIme:
         cur = eng.current() if eng else ''
         content = [(u, 'plain') for u in self.units]
         content += [(c, 'inverse') for c in cur] or [(' ', 'cursor')]
-        room = self.COLS - 1
+        room = self.COLS - 2    # after the mode cell and the divider
         if len(content) - self.view > room or len(content) <= self.view:
             # Page by half a line, so the whole row is redrawn only now and then
             self.view = max(0, len(content) - room // 2)
         mode = 'A' if self.server.ime_latin else IME_LANGS[self.lang][0]
-        line = [(mode, 'inverse')] + content[self.view:self.view + room]
+        # The divider keeps the mode (한, あ, A ...) from reading as typed text
+        line = [(mode, 'inverse'), ('│', 'plain')] + content[self.view:self.view + room]
 
         cands = []
         if self.cand is not None:

@@ -1428,8 +1428,9 @@ OB_OPENED
     STA OB_NU
     STA OB_VIEW
     STA CAND_ON
-    STA OB_CAPS
     JSR OB_RESET
+    LDA #$01
+    STA OB_CAPS         ; Caps Lock taken to be on, as a //e starts
     LDA #$00
     LDX #39
 OB_CLR_DRAWN
@@ -1569,33 +1570,44 @@ IL_YES
     SEC
     RTS
 
-; A letter in 2-Bul-Sik mode, with the Caps Lock guess
+; A letter in 2-Bul-Sik mode, with the Caps Lock guess. Caps Lock is taken to
+; be on (letters unshifted) until a lower-case letter shows it is off, and on
+; again at an upper-case letter that Shift does nothing for. At each change
+; the syllable being composed is read again from its keys as typed.
 OB_HANGUL_KEY
     LDA OB_K
     CMP #'a'
     BCS OHK_LOWER
     LDA OB_CAPS
-    BNE OHK_TOLOW
+    BNE OHK_FEED
     LDA OB_K
     JSR IS_SHIFTED
     BCS OHK_FEED
     LDA #$01
     STA OB_CAPS
     JSR OB_REFEED
-OHK_TOLOW
-    LDA OB_K
-    ORA #$20
-    STA OB_K
     JMP OHK_FEED
 OHK_LOWER
+    LDA OB_CAPS
+    BEQ OHK_FEED
     LDA #$00
     STA OB_CAPS
+    JSR OB_REFEED
 OHK_FEED
     LDA OB_K
     STA OB_KK
+    JSR KEY_AS_READ
     JSR KEY_JAMO
     STA OB_J
     JMP OB_FEED
+
+; A key as typed, in lower case while Caps Lock is taken to be on
+KEY_AS_READ
+    LDX OB_CAPS
+    BEQ KAR_RET
+    ORA #$20
+KAR_RET
+    RTS
 
 ; Carry set for Q W E R T O P (Shift gives them another jamo)
 IS_SHIFTED
@@ -1632,14 +1644,13 @@ KJ_SHIFT
     LDA SHIFT_JAMO,X
     RTS
 
-; Read the syllable being composed again with its keys in lower case
+; Read the syllable being composed again from its keys as typed
 OB_REFEED
     LDX #$00
 ORF_COPY
     CPX OB_NJ
     BEQ ORF_GO
     LDA OB_KEYS,X
-    ORA #$20
     STA OB_TK,X
     INX
     JMP ORF_COPY
@@ -1654,6 +1665,7 @@ ORF_LOOP
     BEQ ORF_END
     LDA OB_TK,X
     STA OB_KK
+    JSR KEY_AS_READ
     JSR KEY_JAMO
     STA OB_J
     JSR OB_FEED
@@ -2081,7 +2093,7 @@ OB_RENDER
     SBC OB_VIEW
     BCC OBR_FIX
     BEQ OBR_FIX
-    CMP #20
+    CMP #19             ; 18 cells for the text, after the mode and the divider
     BCC OBR_VIEW_OK
 OBR_FIX
     ; Page by half a line
@@ -2113,14 +2125,24 @@ OBR_HAN
     STA CP_HI
 OBR_MODE
     JSR OB_CELL
+    ; A divider (U+2502) after the mode, so it does not read as typed text
     LDA #1
+    STA OB_COL
+    LDA #$02
+    STA CP_LO
+    LDA #$25
+    STA CP_HI
+    LDA #0
+    STA OB_STY
+    JSR OB_CELL
+    LDA #2
     STA OB_COL
 OBR_TEXT
     LDA OB_VIEW
     CLC
     ADC OB_COL
     SEC
-    SBC #1
+    SBC #2
     STA OB_I2
     CMP OB_NU
     BCS OBR_NOTUNIT

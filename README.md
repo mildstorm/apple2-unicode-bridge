@@ -185,14 +185,14 @@ When executed (`RUN`), the driver switches to HGR graphics mode and renders high
 > - **SSC setup**: **AppleWin**: **Configuration (F10) → [Serial] tab**, **Slot 2 Serial Port** set to **`TCP`** (port 1977). **Real Apple II**: a **Super Serial Card** in **Slot 2**, an RS-232 / USB-serial cable to the PC, and `python unicode_server.py --com COMx`.
 
 #### Demo: typing on the Apple II alone (hard disk, no serial card, no server)
-Recorded in AppleWin booted from `unicode.hdv` with no SSC connection and no PC server (`python tools/record_onboard_gif.py`); the caption under each frame is the key just pressed.
+Recorded in AppleWin booted from `unicode.hdv` with no SSC connection and no PC server (`python tools/record_onboard_gif.py`); the caption under each frame is the key just pressed. The inverse **한** at the left of the line is the input mode (한 or A, switched with `Ctrl+K`), not typed text; what is typed follows the divider `│`.
 
 | 2-Bul-Sik, a jamo at a time | Hanja with `Ctrl+J` |
 | :---: | :---: |
 | ![Onboard 2-Bul-Sik: ㅇ 아 안 안ㄴ 안녀 안녕 … 안녕하세요, Backspace, Return, RUN](docs/images/onboard_hangul.gif) | ![Onboard Hanja: 한, Ctrl+J, 8 → 韓; 국, Ctrl+J, 1 → 國; RUN](docs/images/onboard_hanja.gif) |
-| `dkssud gktpdy` → 안녕하세요: a final consonant moves on to the next syllable (핫 → 하세), Backspace takes back one jamo, Return types `\K…\N` into the BASIC line, `RUN` draws it from `UFONT` | `gks` → 한, `Ctrl+J` shows its Hanja above the line, `8` → 韓; `rnr` → 국, `Ctrl+J`, `1` → 國; `RUN` draws 韓國 |
+| `dkssud gktpdy` → 안녕하세요: a final consonant moves on to the next syllable (핫 → 하세), Backspace takes back one jamo, Return types `\K…\N` into the BASIC line, `RUN` draws it from `UFONT` | `eo` → 대, `Ctrl+J` shows its Hanja above the line, `1` → 大; then 한 `8` → 韓, 민 `1` → 民, 국 `1` → 國; `RUN` draws 大韓民國 |
 
-While typing a BASIC program, press **`Ctrl+K`** and type on the Apple II keyboard. An input line opens on the last HGR row in mixed mode, with the four text lines (and so the BASIC line, once it is near the bottom) below it. As in the Windows IMEs, what is being composed is shown inverse and commits once the next key cannot join it.
+While typing a BASIC program, press **`Ctrl+K`** and type on the Apple II keyboard. An input line opens on the last HGR row in mixed mode, with the four text lines (and so the BASIC line, once it is near the bottom) below it. Its first cell shows the input mode in inverse (**한**, **A** …), then a divider `│`, then what is typed: `[한]│안녕하세요`. As in the Windows IMEs, what is being composed is shown inverse and commits once the next key cannot join it.
 
 | Mode (col 0) | Typing | Example |
 | :--- | :--- | :--- |
@@ -215,7 +215,7 @@ While typing a BASIC program, press **`Ctrl+K`** and type on the Apple II keyboa
 
 ![RUN: 限 にほん привет καλημέρα, all typed on the Apple II keyboard](docs/images/ime_multi_run.png)
 
-**Shift and Caps Lock**: with AppleWin on the same PC the server reads the PC's Shift key, so Caps Lock does not matter. On real hardware (or an emulator on another machine) only the letter's case arrives, and a //e starts with Caps Lock on, sending every letter in upper case. For 2-Bul-Sik the server tells the two apart: an upper-case letter that Shift does nothing for (any but Q W E R T O P) means Caps Lock is on, and from then on letters count as unshifted; the syllable being typed is read again that way (R K, first read as 까, becomes 가 at the K). A lower-case letter means Caps Lock is off, and Shift counts again (Shift+R = ㄲ). So 2-Bul-Sik works with Caps Lock either way; ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ need it off. Russian and Greek letters come in the case typed, as on a PC with Caps Lock. On a II+, with no lower case, the Shift-only letters cannot be typed.
+**Shift and Caps Lock**: with AppleWin on the same PC the server reads the PC's Shift key, so Caps Lock does not matter. On real hardware (or an emulator on another machine) only the letter's case arrives, and a //e starts with Caps Lock on, sending every letter in upper case. For 2-Bul-Sik the server (and the onboard line) tells the two apart: Caps Lock is taken to be on at first, as a //e starts, so letters count as unshifted (`EO` → 대). A lower-case letter shows it is off: from then on Shift counts (Shift+R = ㄲ), and the syllable being typed is read again from its keys as typed (Shift+R then `k`: ㄱ, then 까). An upper-case letter that Shift does nothing for (any but Q W E R T O P) shows it is on again. So 2-Bul-Sik works with Caps Lock either way; ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ need it off. Russian and Greek letters come in the case typed, as on a PC with Caps Lock. On a II+, with no lower case, the Shift-only letters cannot be typed.
 
 Hanja are converted a syllable at a time, and kana stay kana (there is no kana-to-kanji conversion; use `Ctrl+P` for kanji). The Hanja table `hanja_table.txt` is built from the Unicode Han Database by `tools/build_hanja_table.py`.
 
@@ -375,7 +375,7 @@ RUN DEMO
 | :--- | :--- | :--- |
 | DOS 3.3 `unicode.dsk` + server | `$6000` cache (characters baked in by `build_font_dsk.py`); `POKE 24576,0` sends everything to the server (any character, old Hangul, colour) | Server |
 | DOS 3.3 `unicode.dsk`, no server | `$6000` cache only | — |
-| ProDOS hard disk, no server | `UFONT`: any of its 34,951 characters | `Ctrl+K` onboard (2-Bul-Sik, Hanja); no terminal mode |
+| ProDOS hard disk, no server | `UFONT`: any of its 35,897 characters | `Ctrl+K` onboard (2-Bul-Sik, Hanja); no terminal mode |
 | ProDOS hard disk + server | `UFONT`; `POKE 16387,0` sends them to the server | `Ctrl+K` onboard; `POKE 16453,1` the server. Terminal mode: server |
 | No disk of fonts, no serial card | `& "/TAPE"` loads a cache through the cassette input ([Cassette Input](#-cassette-input-the-font-cache-without-a-serial-card-or-disk)) | — |
 
@@ -447,7 +447,7 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 
 | `--size` | Glyphs | Disk used |
 | :--- | :--- | :--- |
-| `32M` (65,535 blocks, default) | 34,951: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility and conjoining jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs | 1.1 MB |
+| `32M` (65,535 blocks, default) | 35,897: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility and conjoining jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs | 1.1 MB |
 | `800K` (1,600 blocks) | 13,238: the same without Hanja (spread over 20,992 code points they need about 1,300 blocks) | 477 KB |
 
 `--font` picks the font chain (default `Galmuri14.ttf, NotoSerifCJK16.ttf`).
@@ -512,7 +512,7 @@ Checked in AppleWin and on the STM32F769I-DISCO //e; not yet on a real Apple II.
 | | Hard disk alone (onboard) | Needs the server (SSC) |
 | :--- | :--- | :--- |
 | **Typing** (`Ctrl+K`) | 2-Bul-Sik Hangul, Hanja (`Ctrl+J`), A (as typed) | Japanese kana, Russian, Greek (`Ctrl+L`); PC input and paste (`Ctrl+P`) |
-| **Drawing** (`&`) | The 34,951 glyphs of `UFONT`: Hangul, Hanja (CJK Unified Ideographs), kana, Latin, Greek, Cyrillic, symbols, Hangul jamo | Old Hangul composed into one cell, emoji, Arabic, Hebrew (5b), the finer colour rasteriser |
+| **Drawing** (`&`) | The 35,897 glyphs of `UFONT`: Hangul, Hanja (CJK Unified Ideographs), kana, Latin, Greek, Cyrillic, symbols, Hangul jamo | Old Hangul composed into one cell, emoji, Arabic, Hebrew (5b), the finer colour rasteriser |
 | **Terminal mode** (`&` alone) | — | Yes |
 
 **Limits and notes**

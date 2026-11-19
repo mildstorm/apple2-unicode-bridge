@@ -52,8 +52,9 @@ def run(keys, code, sym):
             cpu.step()
         raise RuntimeError("did not return")
 
-    for name in ("OB_NU", "OB_LANG", "OB_CAPS", "CAND_ON", "BUF_HEAD"):
+    for name in ("OB_NU", "OB_LANG", "CAND_ON", "BUF_HEAD"):
         mem[sym[name]] = 0
+    mem[sym["OB_CAPS"]] = 1          # as OB_IME starts the line: Caps Lock on
     call(sym["OB_RESET"])
     for k in keys:
         call(sym["OB_KEY"], 0x08 if k == "\b" else ord(k))

@@ -6,8 +6,8 @@ after every key with a caption saying what was pressed.
     python tools/record_onboard_gif.py          (needs AppleWin, Pillow)
 
 Writes docs/images/onboard_hangul.gif (2-Bul-Sik composing 안녕하세요, a
-jamo at a time, then RUN) and docs/images/onboard_hanja.gif (한 국 turned
-into 韓國 with Ctrl+J, then RUN). AppleWin's settings are put back afterwards
+jamo at a time, then RUN) and docs/images/onboard_hanja.gif (대한민국 turned
+into 大韓民國 a syllable at a time with Ctrl+J, then RUN). AppleWin's settings are put back afterwards
 (it keeps the slot 7 card given on its command line).
 """
 import os
@@ -80,7 +80,7 @@ def record(hwnd):
     type_text(hwnd, '10 & "')
     time.sleep(0.5)
     rec.shot('BASIC 줄 10 & "  (서버·시리얼 카드 없음, HDD 부팅)', 1400)
-    rec.key(CTRL_K, "Ctrl+K: 화면 아래에 입력 줄 [한]", 1400, wait=0.8)
+    rec.key(CTRL_K, "Ctrl+K: 입력 줄. 맨 앞 [한]은 입력 모드, │ 뒤가 입력한 글자", 2200, wait=0.8)
     letters(rec, "dkssud", ["d → ㅇ", "k → 아", "s → 안", "s → 안ㄴ", "u → 안녀",
                             "d → 안녕"])
     letters(rec, "gktpdy", ["g → 안녕ㅎ", "k → 안녕하", "t → 안녕핫",
@@ -103,18 +103,23 @@ def record(hwnd):
     type_text(hwnd, '10 & "')
     time.sleep(0.5)
     rec.shot('BASIC 줄 10 & "', 1200)
-    rec.key(CTRL_K, "Ctrl+K: 입력 줄 [한]", 1200, wait=0.8)
-    letters(rec, "gks", ["g → ㅎ", "k → 하", "s → 한"])
-    rec.key(CTRL_J, "Ctrl+J (↓): '한'의 한자 후보 (1-9, Space 다음 쪽)", 2200, wait=0.8)
-    rec.key(ord("8"), "8 → 韓", 1200)
-    letters(rec, "rnr", ["r → 韓ㄱ", "n → 韓구", "r → 韓국"])
-    rec.key(CTRL_J, "Ctrl+J: '국'의 한자 후보", 2200, wait=0.8)
-    rec.key(ord("1"), "1 → 韓國", 1400)
-    rec.key(RETURN, "Return: BASIC 줄에 들어감", 1600, wait=0.8)
+    rec.key(CTRL_K, "Ctrl+K: 입력 줄. 맨 앞 [한]은 입력 모드, │ 뒤가 입력한 글자", 2200, wait=0.8)
+    # 대한민국 -> 大韓民國, a syllable at a time
+    done = ""
+    for steps, syl, pick, hanja in ((("eㄷ", "o대"), "대", "1", "大"),
+                                    (("gㅎ", "k하", "s한"), "한", "8", "韓"),
+                                    (("aㅁ", "l미", "s민"), "민", "1", "民"),
+                                    (("rㄱ", "n구", "r국"), "국", "1", "國")):
+        for step in steps:
+            rec.key(ord(step[0]), f"{step[0]} → {done}{step[1:]}", 600)
+        rec.key(CTRL_J, f"Ctrl+J (↓): '{syl}'의 한자 후보 (1-9 선택, Space 다음 쪽)", 2000, wait=0.8)
+        done += hanja
+        rec.key(ord(pick), f"{pick} → {done}", 1200)
+    rec.key(RETURN, "Return: BASIC 줄에 16진수 문자열로 들어감", 1600, wait=0.8)
     type_text(hwnd, '"\r')
     type_text(hwnd, "RUN\r")
     time.sleep(2.5)
-    rec.shot("RUN: 韓國 (서버 없음)", 3000)
+    rec.shot("RUN: 大韓民國 (하드디스크의 UFONT로, 서버 없음)", 3000)
     rec.save("onboard_hanja.gif")
 
 
