@@ -192,7 +192,7 @@ While typing a BASIC program, press **`Ctrl+K`** and type on the Apple II keyboa
 
 ![RUN: 限 にほん привет καλημέρα, all typed on the Apple II keyboard](docs/images/ime_multi_run.png)
 
-**Shift and Caps Lock**: with AppleWin on the same PC the server reads the PC's Shift key, so Caps Lock does not matter. On real hardware the server goes by the letter's case, so turn Caps Lock off on the //e (on a II+, with no lower case, Shift-only letters cannot be typed).
+**Shift and Caps Lock**: with AppleWin on the same PC the server reads the PC's Shift key, so Caps Lock does not matter. On real hardware (or an emulator on another machine) only the letter's case arrives, and a //e starts with Caps Lock on, sending every letter in upper case. For 2-Bul-Sik the server tells the two apart: an upper-case letter that Shift does nothing for (any but Q W E R T O P) means Caps Lock is on, and from then on letters count as unshifted; the syllable being typed is read again that way (R K, first read as 까, becomes 가 at the K). A lower-case letter means Caps Lock is off, and Shift counts again (Shift+R = ㄲ). So 2-Bul-Sik works with Caps Lock either way; ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ need it off. Russian and Greek letters come in the case typed, as on a PC with Caps Lock. On a II+, with no lower case, the Shift-only letters cannot be typed.
 
 Hanja are converted a syllable at a time, and kana stay kana (there is no kana-to-kanji conversion; use `Ctrl+P` for kanji). The Hanja table `hanja_table.txt` is built from the Unicode Han Database by `tools/build_hanja_table.py`.
 
@@ -243,6 +243,9 @@ While the live font server streams unlimited Unicode glyphs dynamically, you can
 | **`verify_dsk_font.py`** | Verification utility confirming glyph rendering directly from DSK `FONT` binary. |
 | **`unicode_driver.s`** | 6502 assembly source code for the Apple II resident driver ($4000). |
 | **`unicode.dsk`** | Ready-to-boot DOS 3.3 disk image containing `UNICODE.BIN`, standalone `FONT`, and demo programs. |
+| **`unicode.hdv`** | Ready-to-boot 32 MB ProDOS hard disk image with the driver and the whole font (`UFONT`), built by `build_hdd.py`. |
+| **`cassette_audio.py`** | The font cache as an Apple II cassette recording (WAV, or half cycles for an emulator), for `& "/TAPE"`. |
+| **`tools/audio_font_streamer.py`** | Sends a font cache to the cassette input: a WAV file, or an emulator over TCP. |
 | **`UNICODE.BIN`** | Assembled 6502 binary driver ($4000). |
 | **`NotoSerifCJK16.ttf`** | Default bundled 16px TrueType font covering extensive CJK & Unicode glyphs. |
 | **`README_HANGUL.md`** | Detailed Korean documentation (한글 사용 설명서). |
@@ -318,11 +321,11 @@ python unicode_server.py
 1. Connect your PC to the Apple II Super Serial Card (Slot 2) using an RS-232 to USB adapter cable.
 2. Run `python unicode_server.py --com COM3` (9600 baud).
 3. Boot `unicode.dsk` on your Apple II.
-4. Turn Caps Lock off on the //e before typing with `Ctrl+K`: the server tells Shift letters (ㄲ, Я, Σ…) from the letter's case.
+4. For `Ctrl+K`, 2-Bul-Sik works with Caps Lock on or off; turn it off for the Shift letters (ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ, lower-case Я, Σ…), which the server tells by the letter's case.
 
 #### Using a ProDOS Hard Disk (no server needed):
-1. `python build_hdd.py --prodos ProDOS_2_4_3.po` builds `build/unicode_hdd.hdv` (see [ProDOS Hard Disk](#-prodos-hard-disk-the-whole-font-no-server)).
-2. Put it on the hard disk (CFFA3000 / Floppy Emu card, or CiderPress / ADTPro), or in AppleWin set **Slot 7** to the hard disk controller with the image as HDD 1.
+1. Take [`unicode.hdv`](unicode.hdv) from this repository (or build it: `python build_hdd.py --prodos ProDOS_2_4_3.po`; see [ProDOS Hard Disk](#-prodos-hard-disk-the-whole-font-no-server)).
+2. Put it on the hard disk (CFFA3000 / Floppy Emu card, or CiderPress / ADTPro), in AppleWin set **Slot 7** to the hard disk controller with the image as HDD 1, or on the STM32F769I-DISCO //e upload it and choose it with `hd UNICODE.HDV`.
 3. Boot: `STARTUP` loads the driver and shows `FONT: UFONT (NO SERVER NEEDED)`. The serial card and server are still used if present, for `Ctrl+K`, terminal mode and `POKE 16387,0`.
 
 ### Step 3: Run the Demonstration
@@ -341,6 +344,7 @@ RUN DEMO
 | DOS 3.3 `unicode.dsk`, no server | `$6000` cache only | — |
 | ProDOS hard disk, no server | `UFONT`: any of its 34,596 characters | — |
 | ProDOS hard disk + server | `UFONT`; `POKE 16387,0` sends them to the server | Server |
+| No disk of fonts, no serial card | `& "/TAPE"` loads a cache through the cassette input ([Cassette Input](#-cassette-input-the-font-cache-without-a-serial-card-or-disk)) | — |
 
 ---
 
@@ -393,9 +397,10 @@ The `$6000` cache holds at most 255 characters, the ones a program uses. On an A
 
 ![HDDEMO in AppleWin, booted from the hard-disk image, no server running](docs/images/hdd_demo.png)
 
-### 1. Building the disk image
+### 1. The disk image
+[`unicode.hdv`](unicode.hdv) in this repository is ready to use: a 32 MB ProDOS hard disk (ProDOS order, the raw image a `.po` also is) with ProDOS 2.4.3, BASIC.SYSTEM, the driver and the whole font. To build it again (after changing the driver or the font):
 ```bash
-python build_hdd.py --prodos ProDOS_2_4_3.po                      # build/unicode_hdd.hdv, 32 MB
+python build_hdd.py --prodos ProDOS_2_4_3.po                      # unicode.hdv, 32 MB
 python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800k.po
 ```
 `--prodos` is a ProDOS 2.4.x disk (from [prodos8.com](https://prodos8.com) or AppleWin's folder): `PRODOS`, `BASIC.SYSTEM` and its boot blocks are copied from it. The image holds:
@@ -412,7 +417,20 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 | `32M` (65,535 blocks, default) | 34,596: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs | 1.1 MB |
 | `800K` (1,600 blocks) | 13,238: the same without Hanja (spread over 20,992 code points they need about 1,300 blocks) | 477 KB |
 
-`--font` picks the font chain (default `Galmuri14.ttf, NotoSerifCJK16.ttf`). A CFFA3000 or Floppy Emu takes the image file as it is on its card; for a CFFA or MicroDrive partition or a SCSI disk, write it with CiderPress or ADTPro. In AppleWin: **Configuration → Slot 7: Hard disk controller**, attach the image as HDD 1, boot (`-s7 hdc -h1 build\unicode_hdd.hdv` on the command line).
+`--font` picks the font chain (default `Galmuri14.ttf, NotoSerifCJK16.ttf`).
+
+**Putting it on the machine**
+- **CFFA3000, Floppy Emu**: copy `unicode.hdv` onto the card as it is.
+- **CFFA / MicroDrive partition, SCSI disk**: write it with CiderPress or ADTPro.
+- **AppleWin**: **Configuration → Slot 7: Hard disk controller**, attach the image as HDD 1, boot (`-s7 hdc -h1 unicode.hdv` on the command line).
+- **STM32F769I-DISCO //e** ([STM32F769I-DISCO Apple II emulator](https://github.com/mildstorm/STM32F769I-DISCO)): its SmartPort card in slot 7 runs a `.HDV`/`.PO` image from the SD card. Upload it while the board runs, then choose it on the board's command line (TCP 2323); the choice is kept on the SD card:
+  ```powershell
+  .\tools\sd-upload.ps1 ..\..\apple2-unicode-bridge\unicode.hdv -Name UNICODE.HDV
+  ```
+  ```
+  a2> hd UNICODE.HDV
+  ```
+  ![HDDEMO on the STM32F769I-DISCO //e's LCD, from UNICODE.HDV on its SD card](docs/images/board_hdd_demo.png)
 
 ### 2. How the driver uses it
 - At `CALL 16384` the driver checks for ProDOS (BASIC.SYSTEM's `$3D0` vector points to `$BExx`). It then takes input through `VECTIN` instead of DOS 3.3's `$AA55`, and opens `UFONT`. A name without `/` is looked up from the ProDOS prefix, or else from the volume the driver was loaded from.
@@ -771,47 +789,33 @@ With the PC server streaming the glyphs (`POKE 24576,0` first to bypass the cach
 
 ---
 
-## 🎧 ADTPro Audio / Cassette Transport (No Serial Card Needed)
+## 🎧 Cassette Input: the Font Cache Without a Serial Card or Disk
 
-Even a stock Apple II/IIe with no serial interface card such as the Super Serial Card can receive font data in real time, with nothing but a cable from the **PC's 3.5 mm audio output (headphone/speaker jack) to the Apple II's rear Cassette IN jack**.
+An Apple II with no Super Serial Card and no disk of fonts can still take a font cache through its **cassette input**, from the PC's headphone or line output. `& "/TAPE"` reads it into `$6000`; after that `&` strings draw from it as from a cache loaded off disk.
 
-> [!IMPORTANT]
-> **AppleWin limitation (real hardware only)**:
-> AppleWin does not emulate passing the PC sound card's input (microphone/line-in) to the Apple II cassette port (`$C060 TAPEIN`): `Tape.cpp: TapeRead` always returns the floating-bus value.
-> This audio transport is therefore a **real-hardware-only feature**, for a real Apple II connected to the PC with a 3.5 mm audio cable into its rear Cassette IN jack. In AppleWin, use the **serial (TCP/COM port) connection** or the **standalone DSK font cache (`$6000`)**.
+### 1. Format
+The recording is in the standard Apple II cassette format, so the driver reads it with the monitor's own `READ` routine (`$FEFD`): a 770 Hz leader, a sync bit (one half cycle each of 2500 Hz and 2000 Hz), the bytes most significant bit first (0 = one cycle of 2000 Hz, 1 = one of 1000 Hz), then a checksum byte (`$FF` XOR every byte). There are two records, each after a 5-second leader (`READ` waits 3.5 seconds before it looks for the sync bit):
+1. 3 bytes: the length of the cache and its checksum.
+2. The cache itself (the `HG` table `build_font_dsk.py` makes), put at `$6000`.
 
-### 1. Transport Format (ADTPro Audio FSK Modulation)
-It uses the proven audio protocol of ADTPro (`BytesToWav.java` and `AudioTransport.java`):
-- **Audio format**: 44.1 kHz, 8-bit unsigned PCM (.WAV)
-- **Leader tone**: 770 Hz sine wave
-- **Sync bit**: 2200 Hz
-- **Data bit '0'**: 2000 Hz half cycle (~250 µs)
-- **Data bit '1'**: 1000 Hz half cycle (~500 µs)
-- **Checksum and trailer**: running XOR checksum byte + 200 Hz trailer + silence
+`READ` prints `ERR` on a bad record but cannot tell the caller, so the driver checks the cache against the checksum from the first record and drops it (clears the `H` at `$6000`) if it does not match; `&` then never draws from a damaged cache. A cache of 137 glyphs (4,936 bytes) takes 34 seconds.
 
-### 2. PC-Side Font Audio Streaming Tools
-Turn the font data in a DSK image into an audio waveform and play it through the PC's speaker or headphone jack:
+### 2. Sending it
 ```bash
-# 1) Build a WAV of the DSK font cache and play it through the PC sound card
-python tools/audio_font_streamer.py --dsk unicode.dsk --play
+# A WAV file to play into the cassette input of a real Apple II
+python tools/audio_font_streamer.py --dsk unicode.dsk --wav font.wav [--play]
 
-# 2) Or only save it as a WAV file
-python tools/audio_font_streamer.py --dsk unicode.dsk --wav my_font.wav
+# The cache of only the characters a text uses
+python tools/audio_font_streamer.py --text "안녕하세요 漢字" --wav font.wav
 
-# 3) Have unicode_server write the font audio stream itself
-python unicode_server.py --audio-wav font_stream.wav
+# Straight to an emulator that takes the cassette signal over TCP (the
+# STM32F769I-DISCO //e, port 6503, as half-cycle lengths)
+python tools/audio_font_streamer.py --dsk unicode.dsk --board 169.254.246.139 --src 169.254.139.170
 ```
+On the Apple II, run `& "/TAPE"` first (from the prompt or a program; it works with or without the server, under DOS 3.3 or ProDOS), then start the playback. `READ` waits for the tone; Control-Reset stops it. With a disk font (`UFONT`) also on, the cache is used first; `POKE 16387,0` leaves only the cache.
 
-### 3. Switching the Apple II Driver's Receive Mode
-The 6502 driver measures the period between 0↔1 transitions on `$C060` (TAPEIN) to decode the audio signal in real time:
-- **Switch to audio mode**:
-  ```basic
-  & "/audio"     (or & "/aud")
-  ```
-- **Back to serial (Super Serial) mode**:
-  ```basic
-  & "/serial"    (or & "/ser")
-  ```
+> [!NOTE]
+> AppleWin does not feed anything to the cassette input (`Tape.cpp: TapeRead` returns the floating bus), so this needs real hardware or an emulator that takes a cassette signal. It was checked on the STM32F769I-DISCO //e: the cache loaded, `&` drew from it with no server, and a recording with one bit changed was refused.
 
 ---
 

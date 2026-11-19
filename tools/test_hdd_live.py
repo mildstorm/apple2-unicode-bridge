@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Live AppleWin check of drawing from the ProDOS hard-disk font, no server.
 
-Boots build/unicode_hdd.hdv (python build_hdd.py) from a hard-disk card in
+Boots unicode.hdv (python build_hdd.py) from a hard-disk card in
 slot 7, then runs HDDEMO and JEMANG and captures the screen after each.
 Screenshots go to hdd_*.png in the temp directory. AppleWin saves the slot 7
 card and image given on its command line to its settings; they are put back
@@ -45,7 +45,7 @@ def run_demos():
 
 
 def main():
-    image = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT_DIR, "build", "unicode_hdd.hdv")
+    image = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT_DIR, "unicode.hdv")
     subprocess.run(["powershell", "-Command",
                     "Stop-Process -Name AppleWin -Force -ErrorAction SilentlyContinue"],
                    capture_output=True)

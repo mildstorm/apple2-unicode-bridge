@@ -192,7 +192,7 @@ BASIC 프로그램을 입력하다가 **`Ctrl+K`** 를 누르면 Apple II 키보
 
 ![RUN: Apple II 키보드로 친 限 にほん привет καλημέρα](docs/images/ime_multi_run.png)
 
-**Shift와 Caps Lock**: AppleWin이 같은 PC에서 돌면 서버가 PC의 Shift 키를 읽으므로 Caps Lock과 상관없습니다. 실기에서는 글자의 대소문자로 판단하므로 //e의 Caps Lock을 꺼야 합니다(소문자가 없는 II+에서는 Shift로만 치는 글자를 칠 수 없음).
+**Shift와 Caps Lock**: AppleWin이 같은 PC에서 돌면 서버가 PC의 Shift 키를 읽으므로 Caps Lock과 상관없습니다. 실기(또는 다른 기계의 에뮬레이터)에서는 글자의 대소문자만 오고, //e는 Caps Lock이 켜진 채로 시작해 모든 글자를 대문자로 보냅니다. 2벌식에서는 서버가 둘을 구분합니다. Shift가 아무 뜻도 없는 글자(Q W E R T O P 말고)가 대문자로 오면 Caps Lock이 켜진 것으로 보고, 그때부터 글자를 Shift 없이 친 것으로 셉니다. 조합 중이던 글자도 그렇게 다시 읽습니다(R K는 처음에 '까'로 읽히다가 K에서 '가'가 됨). 소문자가 오면 Caps Lock이 꺼진 것이고, 다시 Shift를 셉니다(Shift+R = ㄲ). 그래서 2벌식은 Caps Lock이 켜져 있든 꺼져 있든 되고, ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ는 꺼야 칠 수 있습니다. 러시아어·그리스어는 PC에서 Caps Lock을 켠 것처럼 친 대소문자 그대로 들어갑니다. 소문자가 없는 II+에서는 Shift로만 치는 글자를 칠 수 없습니다.
 
 한자는 한 글자씩 바꾸고, 가나는 가나로만 입력됩니다(가나→한자 변환은 없으니 일본어 한자는 `Ctrl+P`로). 한자표 `hanja_table.txt`는 `tools/build_hanja_table.py`가 유니코드 한자 데이터베이스(Unihan)로 만듭니다.
 
@@ -243,6 +243,9 @@ PC 폰트 서버는 유니코드 글리프를 제한 없이 보내 주지만, BA
 | **`verify_dsk_font.py`** | DSK의 `FONT` 바이너리로 글리프가 제대로 그려지는지 확인하는 도구. |
 | **`unicode_driver.s`** | Apple II 상주 드라이버($4000)의 6502 어셈블리 소스. |
 | **`unicode.dsk`** | `UNICODE.BIN`, 독립 실행용 `FONT`, 데모 프로그램이 든 부팅 가능한 DOS 3.3 디스크 이미지. |
+| **`unicode.hdv`** | 드라이버와 글꼴 전체(`UFONT`)가 든 부팅 가능한 32MB ProDOS 하드디스크 이미지. `build_hdd.py`가 만듦. |
+| **`cassette_audio.py`** | 글꼴 캐시를 Apple II 카세트 녹음(WAV, 또는 에뮬레이터용 반주기 길이)으로 만듦. `& "/TAPE"`용. |
+| **`tools/audio_font_streamer.py`** | 글꼴 캐시를 카세트 입력으로 보냄: WAV 파일, 또는 TCP로 에뮬레이터에. |
 | **`UNICODE.BIN`** | 어셈블한 6502 바이너리 드라이버 ($4000). |
 | **`NotoSerifCJK16.ttf`** | CJK와 유니코드 글리프를 폭넓게 담은 기본 번들 16px TrueType 폰트. |
 | **`README_HANGUL.md`** | 한국어 문서 (이 문서). |
@@ -318,11 +321,11 @@ python unicode_server.py
 1. RS-232–USB 변환 케이블로 PC와 Apple II의 Super Serial Card(슬롯 2)를 연결합니다.
 2. `python unicode_server.py --com COM3`을 실행합니다(9600 baud).
 3. Apple II에서 `unicode.dsk`로 부팅합니다.
-4. `Ctrl+K`로 입력하기 전에 //e의 Caps Lock을 끕니다. 서버가 글자의 대소문자로 Shift 글자(ㄲ, Я, Σ…)를 구분합니다.
+4. `Ctrl+K`의 2벌식은 Caps Lock이 켜져 있든 꺼져 있든 됩니다. Shift 글자(ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ, 소문자 Я, Σ…)를 치려면 끕니다. 서버가 글자의 대소문자로 구분합니다.
 
 #### ProDOS 하드디스크 (서버 없이):
-1. `python build_hdd.py --prodos ProDOS_2_4_3.po`로 `build/unicode_hdd.hdv`를 만듭니다([ProDOS 하드디스크](#-prodos-하드디스크-서버-없이-글꼴-전체) 참고).
-2. 하드디스크에 넣습니다(CFFA3000·Floppy Emu 카드, 또는 CiderPress·ADTPro). AppleWin에서는 **슬롯 7**을 하드디스크 컨트롤러로 하고 이미지를 HDD 1에 붙입니다.
+1. 저장소의 [`unicode.hdv`](unicode.hdv)를 씁니다(다시 만들려면 `python build_hdd.py --prodos ProDOS_2_4_3.po`, [ProDOS 하드디스크](#-prodos-하드디스크-서버-없이-글꼴-전체) 참고).
+2. 하드디스크에 넣습니다(CFFA3000·Floppy Emu 카드, 또는 CiderPress·ADTPro). AppleWin에서는 **슬롯 7**을 하드디스크 컨트롤러로 하고 이미지를 HDD 1에 붙입니다. STM32F769I-DISCO //e에서는 SD 카드에 올린 뒤 `hd UNICODE.HDV`로 고릅니다.
 3. 부팅하면 `STARTUP`이 드라이버를 올리고 `FONT: UFONT (NO SERVER NEEDED)`를 보여 줍니다. 시리얼 카드와 서버가 있으면 `Ctrl+K`, 터미널 모드, `POKE 16387,0`에는 여전히 서버를 씁니다.
 
 ### 3단계: 데모 실행
@@ -341,6 +344,7 @@ RUN DEMO
 | DOS 3.3 `unicode.dsk`, 서버 없음 | `$6000` 캐시만 | — |
 | ProDOS 하드디스크, 서버 없음 | `UFONT`에 있는 34,596자 전부 | — |
 | ProDOS 하드디스크 + 서버 | `UFONT`. `POKE 16387,0`이면 서버로 | 서버 |
+| 글꼴 디스크도 시리얼 카드도 없음 | `& "/TAPE"`로 카세트 입력에서 캐시를 읽음([카세트 입력](#-카세트-입력-시리얼-카드도-디스크도-없이-글꼴-캐시)) | — |
 
 ---
 
@@ -393,9 +397,10 @@ python verify_dsk_font.py
 
 ![하드디스크 이미지로 부팅한 AppleWin에서 서버 없이 실행한 HDDEMO](docs/images/hdd_demo.png)
 
-### 1. 디스크 이미지 만들기
+### 1. 디스크 이미지
+저장소의 [`unicode.hdv`](unicode.hdv)를 바로 쓸 수 있습니다. ProDOS 2.4.3, BASIC.SYSTEM, 드라이버, 글꼴 전체가 든 32MB ProDOS 하드디스크입니다(ProDOS 순서의 원시 이미지로, `.po`와 같은 형식). 드라이버나 글꼴을 바꾼 뒤 다시 만들려면:
 ```bash
-python build_hdd.py --prodos ProDOS_2_4_3.po                      # build/unicode_hdd.hdv, 32MB
+python build_hdd.py --prodos ProDOS_2_4_3.po                      # unicode.hdv, 32MB
 python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800k.po
 ```
 `--prodos`에는 ProDOS 2.4.x 디스크([prodos8.com](https://prodos8.com) 또는 AppleWin 폴더)를 줍니다. 거기서 `PRODOS`, `BASIC.SYSTEM`과 부트 블록을 복사합니다. 이미지에 들어가는 파일:
@@ -412,7 +417,20 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 | `32M` (65,535블록, 기본값) | 34,596자: ASCII, 라틴, 그리스어, 러시아어, 기호, 가나, 한글 호환 자모, 한글 음절 11,172자 전체, CJK 통합 한자 20,992자 | 1.1MB |
 | `800K` (1,600블록) | 13,238자: 위에서 한자를 뺀 것(20,992개 코드포인트에 흩어진 한자는 1,600블록 중 약 1,300블록이 필요) | 477KB |
 
-`--font`로 글꼴 목록을 고릅니다(기본값 `Galmuri14.ttf, NotoSerifCJK16.ttf`). CFFA3000과 Floppy Emu는 이미지 파일을 카드에 그대로 넣으면 되고, CFFA·MicroDrive 파티션이나 SCSI 디스크에는 CiderPress나 ADTPro로 씁니다. AppleWin에서는 **Configuration → Slot 7: Hard disk controller**로 하고 이미지를 HDD 1에 붙여 부팅합니다(명령줄로는 `-s7 hdc -h1 build\unicode_hdd.hdv`).
+`--font`로 글꼴 목록을 고릅니다(기본값 `Galmuri14.ttf, NotoSerifCJK16.ttf`).
+
+**기계에 넣기**
+- **CFFA3000, Floppy Emu**: `unicode.hdv`를 카드에 그대로 복사합니다.
+- **CFFA·MicroDrive 파티션, SCSI 디스크**: CiderPress나 ADTPro로 씁니다.
+- **AppleWin**: **Configuration → Slot 7: Hard disk controller**로 하고 이미지를 HDD 1에 붙여 부팅합니다(명령줄로는 `-s7 hdc -h1 unicode.hdv`).
+- **STM32F769I-DISCO //e** ([STM32F769I-DISCO Apple II 에뮬레이터](https://github.com/mildstorm/STM32F769I-DISCO)): 슬롯 7의 SmartPort 카드가 SD 카드의 `.HDV`/`.PO` 이미지를 씁니다. 보드가 돌고 있을 때 올린 뒤, 보드 명령줄(TCP 2323)에서 고릅니다. 고른 것은 SD 카드에 기억됩니다:
+  ```powershell
+  .\tools\sd-upload.ps1 ..\..\apple2-unicode-bridge\unicode.hdv -Name UNICODE.HDV
+  ```
+  ```
+  a2> hd UNICODE.HDV
+  ```
+  ![STM32F769I-DISCO //e의 LCD: SD 카드의 UNICODE.HDV로 실행한 HDDEMO](docs/images/board_hdd_demo.png)
 
 ### 2. 드라이버가 쓰는 방식
 - `CALL 16384` 때 드라이버가 ProDOS인지 확인합니다(BASIC.SYSTEM의 `$3D0` 벡터가 `$BExx`를 가리킴). 그러면 DOS 3.3의 `$AA55` 대신 `VECTIN`으로 입력을 받고, `UFONT`를 엽니다. `/`로 시작하지 않는 이름은 ProDOS 접두어에서, 접두어가 없으면 드라이버를 읽어 온 볼륨에서 찾습니다.
@@ -771,47 +789,33 @@ PC 서버가 글리프를 보내는 화면(`POKE 24576,0`으로 캐시를 끈 �
 
 ---
 
-## 🎧 ADTPro 오디오 / 카세트 전송 (시리얼 카드 없이)
+## 🎧 카세트 입력: 시리얼 카드도 디스크도 없이 글꼴 캐시
 
-Super Serial Card 같은 직렬 통신 카드가 없는 순정 Apple II/IIe에서도, **PC의 3.5mm 오디오 출력(이어폰/스피커 단자)과 Apple II 뒷면의 Cassette IN 단자**를 케이블로 연결하기만 하면 폰트 데이터를 실시간으로 받을 수 있습니다.
+Super Serial Card도 글꼴 디스크도 없는 Apple II도 **카세트 입력**으로 PC의 이어폰·라인 출력에서 글꼴 캐시를 받을 수 있습니다. `& "/TAPE"`가 그것을 `$6000`에 읽어 들이고, 그 뒤 `&` 문자열은 디스크에서 읽은 캐시처럼 그것으로 그립니다.
 
-> [!IMPORTANT]
-> **AppleWin 제약 (실기 전용 기능)**:
-> AppleWin은 PC 사운드카드 입력(마이크/라인인)을 Apple II 카세트 포트(`$C060 TAPEIN`)로 전달하는 기능을 에뮬레이트하지 않습니다(`Tape.cpp: TapeRead`는 항상 부동 버스 값을 돌려줌).
-> 따라서 이 오디오 전송은 실제 Apple II를 3.5mm 오디오 케이블로 PC와 뒷면 Cassette IN 단자에 연결해 쓰는 **실기 전용 기능**입니다. AppleWin에서는 **시리얼(TCP/COM 포트) 연결**이나 **독립형 DSK 폰트 캐시(`$6000`)** 를 쓰십시오.
+### 1. 형식
+녹음은 표준 Apple II 카세트 형식이라 드라이버가 모니터의 `READ` 루틴(`$FEFD`)으로 읽습니다: 770Hz 리더, 동기 비트(2500Hz와 2000Hz 반주기 하나씩), 최상위 비트부터의 바이트(0은 2000Hz 한 주기, 1은 1000Hz 한 주기), 그리고 체크섬 바이트(`$FF`에 모든 바이트를 XOR). 레코드는 둘이고, 각각 5초 리더 뒤에 옵니다(`READ`가 동기 비트를 찾기 전에 3.5초를 기다림):
+1. 3바이트: 캐시 길이와 체크섬
+2. 캐시 자체(`build_font_dsk.py`가 만드는 `HG` 표). `$6000`에 들어감
 
-### 1. 전송 규격 (ADTPro Audio FSK Modulation)
-검증된 ADTPro(`BytesToWav.java`, `AudioTransport.java`)의 오디오 프로토콜을 씁니다:
-- **오디오 형식**: 44.1 kHz, 8비트 unsigned PCM (.WAV)
-- **리더 톤**: 770 Hz 사인파
-- **싱크 비트**: 2200 Hz
-- **데이터 비트 '0'**: 2000 Hz 반주기 (~250 µs)
-- **데이터 비트 '1'**: 1000 Hz 반주기 (~500 µs)
-- **체크섬과 트레일러**: Running XOR 체크섬 바이트 + 200 Hz 트레일러 + 무음 구간
+`READ`는 잘못된 레코드에 `ERR`를 찍지만 호출한 쪽에 알려 주지 않으므로, 드라이버가 첫 레코드의 체크섬으로 캐시를 확인하고 맞지 않으면 버립니다(`$6000`의 `H`를 지움). 그래서 `&`가 손상된 캐시로 그리는 일은 없습니다. 137자 캐시(4,936바이트)에 34초가 걸립니다.
 
-### 2. PC 쪽 폰트 오디오 스트리밍 도구
-DSK 이미지의 폰트 데이터를 오디오 파형으로 바꿔 PC 스피커나 이어폰 단자로 내보냅니다:
+### 2. 보내기
 ```bash
-# 1) DSK 폰트 캐시를 WAV로 만들어 PC 사운드카드로 바로 재생
-python tools/audio_font_streamer.py --dsk unicode.dsk --play
+# 실기의 카세트 입력에 틀어 줄 WAV 파일
+python tools/audio_font_streamer.py --dsk unicode.dsk --wav font.wav [--play]
 
-# 2) 또는 WAV 파일로만 저장
-python tools/audio_font_streamer.py --dsk unicode.dsk --wav my_font.wav
+# 어떤 글에 쓰인 글자만 담은 캐시
+python tools/audio_font_streamer.py --text "안녕하세요 漢字" --wav font.wav
 
-# 3) unicode_server가 직접 폰트 오디오 스트림 생성
-python unicode_server.py --audio-wav font_stream.wav
+# 카세트 신호를 TCP로 받는 에뮬레이터에 바로 (STM32F769I-DISCO //e, 6503번
+# 포트, 반주기 길이로)
+python tools/audio_font_streamer.py --dsk unicode.dsk --board 169.254.246.139 --src 169.254.139.170
 ```
+Apple II에서 먼저 `& "/TAPE"`를 실행하고(프롬프트에서나 프로그램 안에서, 서버가 있든 없든, DOS 3.3이든 ProDOS든) 재생을 시작합니다. `READ`가 소리를 기다리며, Control-Reset으로 멈춥니다. 디스크 글꼴(`UFONT`)도 켜져 있으면 캐시를 먼저 씁니다. 캐시만 쓰려면 `POKE 16387,0`.
 
-### 3. Apple II 드라이버의 수신 모드 전환
-6502 드라이버는 `$C060`(TAPEIN)의 0↔1 전환 사이 주기를 재어 오디오 신호를 실시간으로 해독합니다:
-- **오디오 모드로 전환**:
-  ```basic
-  & "/audio"     (또는 & "/aud")
-  ```
-- **시리얼(Super Serial) 모드로 복귀**:
-  ```basic
-  & "/serial"    (또는 & "/ser")
-  ```
+> [!NOTE]
+> AppleWin은 카세트 입력에 아무것도 넣어 주지 않으므로(`Tape.cpp: TapeRead`가 부동 버스 값을 돌려줌), 실기나 카세트 신호를 받는 에뮬레이터가 필요합니다. STM32F769I-DISCO //e에서 확인했습니다: 캐시가 들어오고, 서버 없이 `&`가 그것으로 그렸으며, 비트 하나를 바꾼 녹음은 거부되었습니다.
 
 ---
 

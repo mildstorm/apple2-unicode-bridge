@@ -1,60 +1,76 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Audio Font Streamer for Apple II Unicode Bridge.
-Converts Apple II font cache data into ADTPro-compatible audio cassette waveforms
-and streams it directly through the PC audio output (3.5mm headphone/line-out)
-to the Apple II Cassette In ($C060) port.
-"""
+"""Sends a font cache to an Apple II through its cassette input, for
+& "/TAPE" (no serial card or disk needed).
 
-import os
-import sys
+    python tools/audio_font_streamer.py --dsk unicode.dsk --wav font.wav [--play]
+    python tools/audio_font_streamer.py --dsk unicode.dsk --board 169.254.246.139
+    python tools/audio_font_streamer.py --text "안녕하세요 漢字" --wav font.wav
+
+The cache is the FONT file of a disk image (as build_font_dsk.py makes it),
+or one made from --text. On the Apple II run & "/TAPE" first, then play the
+WAV file into the cassette input (real hardware), or use --board for the
+STM32F769I-DISCO //e, which takes the cassette signal on TCP 6503. The load
+takes about 10 seconds of leader plus 6 ms a byte.
+"""
 import argparse
+import os
+import subprocess
+import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, ROOT_DIR)
 
-from adtpro_audio import stream_font_data_as_audio
-from ac_tool import get_raw_file
+from cassette_audio import font_cache_half_cycles, play_wav, seconds, send_half_cycles, write_wav  # noqa: E402
+
+
+def cache_from_disk(dsk):
+    data = subprocess.run(["java", "-jar", os.path.join(SCRIPT_DIR, "AppleCommander.jar"),
+                           "-g", dsk, "FONT"], capture_output=True).stdout
+    start = data.find(b"HG")
+    if start < 0:
+        sys.exit(f"{dsk} has no FONT file with an HG cache")
+    count = data[start + 2]
+    return data[start:start + 4 + count * 36]
+
+
+def cache_from_text(text, font):
+    from build_font_dsk import build_font_table
+    from unicode_server import HangulRasterizer
+    chars = sorted({c for c in text if ord(c) > 127})
+    return build_font_table(chars, HangulRasterizer(font_path=font))
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Stream Apple II Font Cache via ADTPro Audio Cassette Protocol")
-    parser.add_argument("--dsk", default="unicode.dsk", help="DSK image containing 'FONT' file (default: unicode.dsk)")
-    parser.add_argument("--wav", default="font_audio.wav", help="Output WAV filename (default: font_audio.wav)")
-    parser.add_argument("--play", action="store_true", help="Play audio immediately through PC speaker/headphone out")
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    src = ap.add_mutually_exclusive_group()
+    src.add_argument("--dsk", default=os.path.join(ROOT_DIR, "unicode.dsk"),
+                     help="disk image with the FONT cache (default: unicode.dsk)")
+    src.add_argument("--text", help="make the cache from the characters of this text instead")
+    ap.add_argument("--font", default=None, help="font for --text (default: the server's)")
+    ap.add_argument("--wav", help="write the recording as a WAV file")
+    ap.add_argument("--play", action="store_true", help="play the WAV file through the PC's sound output")
+    ap.add_argument("--board", help="send it to an emulator's cassette input over TCP (host)")
+    ap.add_argument("--port", type=int, default=6503)
+    ap.add_argument("--src", default=None, help="local address to send from (the PC's link-local one)")
+    args = ap.parse_args()
 
-    dsk_path = os.path.abspath(args.dsk) if os.path.isabs(args.dsk) else os.path.join(ROOT_DIR, args.dsk)
-    if not os.path.exists(dsk_path):
-        print(f"[오류] DSK 파일을 찾을 수 없습니다: {dsk_path}")
-        sys.exit(1)
+    cache = cache_from_text(args.text, args.font) if args.text else cache_from_disk(args.dsk)
+    halves = font_cache_half_cycles(cache)
+    print(f"[Cassette] font cache {len(cache)} bytes ({cache[2]} glyphs), {seconds(halves):.1f} s")
+    if not args.wav and not args.board:
+        args.wav = os.path.join(ROOT_DIR, "font_audio.wav")
+    if args.wav:
+        write_wav(halves, args.wav)
+        print(f"[Cassette] WAV: {args.wav}")
+        if args.play:
+            print('[Cassette] Playing; run & "/TAPE" on the Apple II first')
+            play_wav(args.wav)
+    if args.board:
+        print(f"[Cassette] Sending to {args.board}:{args.port}; run & \"/TAPE\" on the Apple II first")
+        send_half_cycles(halves, args.board, args.port, args.src)
+        print("[Cassette] Sent; the emulator plays it at its own speed")
 
-    temp_font = f"_temp_font_{os.getpid()}.bin"
-    try:
-        print(f"[*] '{dsk_path}'에서 'FONT' 바이너리 추출 중...")
-        get_raw_file(dsk_path, "FONT", temp_font)
-        with open(temp_font, "rb") as f:
-            font_data = f.read()
-
-        idx = font_data.find(b"HG")
-        if idx == -1:
-            print("[오류] FONT 파일에서 'HG' 매직 헤더를 찾을 수 없습니다!")
-            sys.exit(1)
-
-        font_payload = font_data[idx:]
-        count = font_payload[2]
-        print(f"[*] 유효한 폰트 캐시 확인: {count}개 글리프, 총 {len(font_payload)} 바이트")
-
-        wav_file = os.path.abspath(args.wav) if os.path.isabs(args.wav) else os.path.join(ROOT_DIR, args.wav)
-        stream_font_data_as_audio(font_payload, output_wav=wav_file, play=args.play)
-        print(f"\n[성공] ADTPro 오디오 폰트 스트림 생성 완료!")
-        print(f"  - WAV 파일: {wav_file}")
-        print(f"  - 재생 안내: PC 3.5mm 이어폰/라인아웃 단자를 애플 II 후면 Cassette IN 단자에 연결하고,")
-        print(f"               애플 II에서 & \"/audio\"를 실행한 후 본 WAV 파일을 재생하면 폰트 데이터가 수신됩니다.")
-    finally:
-        if os.path.exists(temp_font):
-            os.remove(temp_font)
 
 if __name__ == "__main__":
     main()

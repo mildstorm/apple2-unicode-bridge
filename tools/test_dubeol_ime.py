@@ -12,9 +12,9 @@ from unicode_server import KoreanAutomata  # noqa: E402
 BACKSPACE = '\b'
 
 
-def type_keys(keys):
+def type_keys(keys, guess_caps=False):
     """Types keys ('\\b' is Backspace); returns committed text + composing char."""
-    ime = KoreanAutomata()
+    ime = KoreanAutomata(guess_caps=guess_caps)
     text = []
     for k in keys:
         if k == BACKSPACE:
@@ -57,14 +57,31 @@ CASES = [
 ]
 
 
+# Keys from an Apple II whose Shift the PC cannot see (guess_caps): Caps
+# Lock sends every letter in upper case.
+CAPS_CASES = [
+    ("RKSKEK", "가나다"),        # Caps Lock: R read as ㄲ until K shows it is on
+    ("DKSSUDGKTPDY", "안녕하세요"),
+    ("EKFRK", "달가"),
+    ("rk", "가"),                # Caps Lock off: case counts
+    ("Rk", "까"),                # Shift+R, then a lower-case k
+    ("dlTek", "있다"),
+    ("DKrk", "아가"),            # Caps Lock on, then off again
+    ("RK\b", "ㄱ"),             # Backspace after the guess
+]
+
+
 def main():
     failed = 0
-    for keys, want in CASES:
-        got = type_keys(keys)
-        ok = got == want
-        failed += not ok
-        print(f"{'ok  ' if ok else 'FAIL'} {keys!r:18} -> {got!r} (want {want!r})")
-    print(f"\n{len(CASES) - failed}/{len(CASES)} passed")
+    total = 0
+    for cases, guess in ((CASES, False), (CAPS_CASES, True)):
+        for keys, want in cases:
+            got = type_keys(keys, guess_caps=guess)
+            ok = got == want
+            failed += not ok
+            total += 1
+            print(f"{'ok  ' if ok else 'FAIL'} {'caps ' if guess else ''}{keys!r:18} -> {got!r} (want {want!r})")
+    print(f"\n{total - failed}/{total} passed")
     return 1 if failed else 0
 
 

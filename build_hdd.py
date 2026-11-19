@@ -2,7 +2,7 @@
 """Builds a bootable ProDOS hard-disk image with the Unicode font on it, so a
 real Apple II (or AppleWin) draws & strings without the PC server.
 
-    python build_hdd.py --prodos ProDOS_2_4_3.po
+    python build_hdd.py --prodos ProDOS_2_4_3.po                      (unicode.hdv)
     python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800k.po
 
 The image (ProDOS block order, .hdv / .po) holds:
@@ -121,7 +121,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--prodos", default=os.environ.get("PRODOS_IMAGE"),
                     help="ProDOS 2.4.x disk image (.po) to take PRODOS, BASIC.SYSTEM and the boot blocks from (or set PRODOS_IMAGE)")
-    ap.add_argument("--out", default=os.path.join(ROOT, "build", "unicode_hdd.hdv"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "unicode.hdv"),
+                    help="the image (default: unicode.hdv in the repository, the one it ships)")
     ap.add_argument("--size", default="32M", choices=["32M", "800K"],
                     help="32M: 65535 blocks with Hanja; 800K: 1600 blocks without (default 32M)")
     ap.add_argument("--font", default="Galmuri14.ttf, NotoSerifCJK16.ttf",

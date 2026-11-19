@@ -43,6 +43,9 @@ class FakeServer:
     def hangul_key_case(self, ch):
         return ch
 
+    def _pc_shift_visible(self):
+        return self.local
+
     def ask_pc_text(self):
         return ""
 
@@ -50,10 +53,12 @@ class FakeServer:
 CTRL = {'K': 0x0B, 'L': 0x0C, 'J': 0x0A, 'P': 0x10}
 
 
-def run_line(keys):
+def run_line(keys, local=True):
     """Types keys on a Ctrl+K line ({K} {L} {J} for Ctrl keys, \\b, \\x1b);
-    returns the text it ends with on Return."""
+    returns the text it ends with on Return. local: the PC sees the Apple
+    II's Shift (AppleWin on it), else the case is guessed (real hardware)."""
     srv = FakeServer()
+    srv.local = local
     ime = us.AppleIme(srv)
     i = 0
     while i < len(keys):
@@ -124,7 +129,14 @@ def main():
         failed += not ok
         print(f"{'ok  ' if ok else 'FAIL'} line {keys!r:28} -> {got!r} (want {want!r})")
 
-    total = len(ENGINE_CASES) + len(LINE_CASES)
+    # Real hardware with Caps Lock on: upper-case letters, Shift unseen
+    for keys, want in (("RKSKEK", "가나다"), ("{L}{L}{L}GHBDTN", "ПРИВЕТ")):
+        got = run_line(keys, local=False)
+        ok = got == want
+        failed += not ok
+        print(f"{'ok  ' if ok else 'FAIL'} caps {keys!r:23} -> {got!r} (want {want!r})")
+
+    total = len(ENGINE_CASES) + len(LINE_CASES) + 2
     print(f"\n{total - failed}/{total} passed")
     return 1 if failed else 0
 

@@ -836,9 +836,21 @@ class KoreanAutomata:
     slots: leading consonants, vowels and final consonants. Each slot holds
     one jamo or a pair that combines (ㅗ+ㅏ=ㅘ, ㄹ+ㄱ=ㄺ). Backspace takes back
     the last jamo typed, so ㅘ goes back to ㅗ and 닭 to 달.
-    """
 
-    def __init__(self):
+    guess_caps: for keys from an Apple II whose Shift the PC cannot see.
+    Caps Lock (on by default on a //e) sends every letter in upper case, and
+    only the case tells Shift+R (ㄲ) from R (ㄱ). An upper-case letter that
+    Shift does nothing for in 2-Bul-Sik (any but Q W E R T O P) means Caps
+    Lock is on: from then on letters count as unshifted, and the syllable
+    being composed is read again that way (RK, read as 까, becomes 가 at
+    the K). A lower-case letter means Caps Lock is off, and case counts again.
+    """
+    SHIFTED = "QWERTOP"
+
+    def __init__(self, guess_caps=False):
+        self.guess_caps = guess_caps
+        self.caps_on = False
+        self.keys = []    # the keys of the syllable being composed
         self.reset()
 
     def reset(self):
@@ -934,14 +946,34 @@ class KoreanAutomata:
         """Commits whatever is being composed and returns it."""
         committed = self.get_current_char()
         self.reset()
+        self.keys = []
+        return committed
+
+    def _feed_key(self, key):
+        committed = self.feed(DUBEOL_KEYS.get(key) or DUBEOL_KEYS[key.lower()])
+        # Every key gives one jamo, so the syllable being composed is made of
+        # the last len(order) keys
+        self.keys = (self.keys + [key])[len(self.keys) + 1 - len(self.order):]
         return committed
 
     def process_key(self, key):
         """Feeds one keyboard letter. Returns (committed_text, composing_char)."""
-        jamo = DUBEOL_KEYS.get(key) or DUBEOL_KEYS.get(key.lower())
-        if jamo is None:
+        if key not in DUBEOL_KEYS and key.lower() not in DUBEOL_KEYS:
             return (self.flush() + key, "")
-        committed = self.feed(jamo)
+        committed = ""
+        if self.guess_caps and key.isascii() and key.isalpha():
+            if key.islower():
+                self.caps_on = False
+            elif key not in self.SHIFTED and not self.caps_on:
+                self.caps_on = True
+                again = [k.lower() for k in self.keys]
+                self.reset()
+                self.keys = []
+                for k in again:
+                    committed += self._feed_key(k)
+            if self.caps_on:
+                key = key.lower()
+        committed += self._feed_key(key)
         return (committed, self.get_current_char())
 
     def backspace(self):
@@ -950,6 +982,7 @@ class KoreanAutomata:
         if not self.order:
             return None
         getattr(self, self.order.pop()).pop()
+        self.keys = self.keys[:-1]
         return self.get_current_char()
 
 def encode_apple2_multilingual(line):
@@ -1137,7 +1170,10 @@ class AppleIme:
         if self.server.ime_latin:
             return None
         if self.lang not in self.engines:
-            self.engines[self.lang] = IME_LANGS[self.lang][1]()
+            eng = IME_LANGS[self.lang][1]()
+            if isinstance(eng, KoreanAutomata):
+                eng.guess_caps = not self.server._pc_shift_visible()
+            self.engines[self.lang] = eng
         return self.engines[self.lang]
 
     def text(self):
@@ -1449,8 +1485,9 @@ class HangulTerminalServer:
 
         AppleWin on this PC: the PC's own Shift key says which. Caps Lock is on
         by default in AppleWin, so the letter's case alone would read every
-        R as ㄲ. On real hardware the byte's case is all there is, so Caps
-        Lock has to be off on the //e for 2-Bul-Sik.
+        R as ㄲ. Elsewhere (real hardware, an emulator on another machine)
+        the byte's case is all there is: the letter goes as it came, and
+        KoreanAutomata.guess_caps tells Caps Lock from Shift.
         """
         if not ('A' <= ch <= 'Z') or not self._pc_shift_visible():
             return ch
@@ -1521,6 +1558,7 @@ class HangulTerminalServer:
             return
 
         norm_ch = self.hangul_key_case(ch)
+        self.automata.guess_caps = not self._pc_shift_visible()
 
         # If in Hangul Mode and key is valid Hangul letter (a-z / A-Z)
         if self.hangul_mode and ((norm_ch >= 'a' and norm_ch <= 'z') or (norm_ch >= 'A' and norm_ch <= 'Z')):
@@ -1948,14 +1986,13 @@ if __name__ == "__main__":
     parser.add_argument("--popup", action="store_true", help="Use GUI popup window for Korean/Hanja input instead of console prompt")
     parser.add_argument("--pc-input", action="store_true", help="Ctrl+K opens the PC input (console or --popup) straight away, instead of 2-Bul-Sik typing on the Apple II keyboard")
     parser.add_argument("--ime-langs", default="ko,hira,kata,ru,el", help="Languages Ctrl+L cycles through on the Ctrl+K line, first is the default: ko (2-Bul-Sik), hira, kata (romaji to kana), ru (ЙЦУКЕН), el (Greek)")
-    parser.add_argument("--audio-wav", default=None, help="Export entire font table as ADTPro-compatible WAV file for Apple II Cassette In")
-    parser.add_argument("--play-audio", action="store_true", help="Play font audio stream through PC audio out directly to Apple II Cassette In")
+    parser.add_argument("--audio-wav", default=None, help="Write a demo font cache as a cassette recording (WAV) for & \"/TAPE\" (see tools/audio_font_streamer.py)")
+    parser.add_argument("--play-audio", action="store_true", help="Play that recording through the PC's sound output into the Apple II cassette input")
     args = parser.parse_args()
 
     if args.audio_wav or args.play_audio:
-        from adtpro_audio import stream_font_data_as_audio
+        from cassette_audio import stream_font_data_as_audio
         wav_file = args.audio_wav or "font_audio.wav"
-        print(f"[ADTPro-Audio] Generating font audio stream for Apple II cassette input: {wav_file}")
         # Build font cache table using bundled/specified fonts
         from build_font_dsk import build_font_table
         rasterizer = HangulRasterizer(font_path=args.font, font_size=args.size, y_offset=args.y_offset, box_center=args.box_center, force_vector=args.force_vector)

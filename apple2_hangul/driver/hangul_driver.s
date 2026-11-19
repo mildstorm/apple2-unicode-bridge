@@ -26,8 +26,6 @@ ACIA_STAT       = $C0A9
 ACIA_CMD        = $C0AA
 ACIA_CTRL       = $C0AB
 
-TAPEIN          = $C060
-TAPEOUT         = $C020
 
 PTR_LO          = $06
 PTR_HI          = $07
@@ -52,12 +50,6 @@ CUR_COL         = $1C
 CUR_ROW         = $1D
 DRAW_MODE       = $1E
 CUR_COLOR       = $1F
-IO_MODE         = $20
-AUD_LASTIN      = $21
-AUD_TIMEY       = $22
-AUD_BITCNT      = $23
-AUD_VAL         = $24
-AUD_CHK         = $25
 HCOLOR_FLG      = $E4
 HGR_HAS_DRAWN   = $F9
 
@@ -100,7 +92,6 @@ INIT
     STA CUR_COL
     STA CUR_ROW
     STA DRAW_MODE
-    STA IO_MODE
     STA HGR_HAS_DRAWN
     LDA #$03
     STA CUR_COLOR
@@ -159,6 +150,25 @@ AMPERSAND_HANDLER
     JMP RUN_TERMINAL_MODE
 
 RUN_AMP_STRING
+    ; & "/TAPE" loads the font cache from the cassette input, with or
+    ; without a server, and stays on the text screen meanwhile
+    LDY #1
+    LDA (TXTPTR_LO),Y
+    CMP #'/'
+    BNE AMP_DRAW
+    INY
+    LDA (TXTPTR_LO),Y
+    ORA #$20
+    CMP #'t'
+    BNE AMP_DRAW
+    JSR TAPE_LOAD
+    INC TXTPTR_LO
+    BNE AMP_TAPE_END
+    INC TXTPTR_HI
+AMP_TAPE_END
+    JMP SKIP_SLASH_TO_END
+
+AMP_DRAW
     STA TXTCLR
     STA HIRES
     STA PAGE1
@@ -585,7 +595,7 @@ HSC_CHECK_X
 
 HSC_CHECK_P
     CMP #'p'            ; /pos col row
-    BNE HSC_CHECK_AUD
+    BNE SKIP_SLASH_TO_END
     JSR ADVANCE_TO_SPACE_ARG
     BCC SKIP_SLASH_TO_END
     JSR PARSE_DEC_NUM
@@ -595,20 +605,6 @@ HSC_CHECK_P
     BCC SKIP_SLASH_TO_END
     JSR PARSE_DEC_NUM
     STA CUR_ROW
-    JMP SKIP_SLASH_TO_END
-
-HSC_CHECK_AUD
-    CMP #'a'            ; /audio or /aud?
-    BNE HSC_CHECK_SER
-    LDA #1
-    STA IO_MODE
-    JMP SKIP_SLASH_TO_END
-
-HSC_CHECK_SER
-    CMP #'s'            ; /serial or /ser?
-    BNE SKIP_SLASH_TO_END
-    LDA #0
-    STA IO_MODE
     JMP SKIP_SLASH_TO_END
 
 SKIP_SLASH_TO_END
@@ -1853,12 +1849,6 @@ CLR_40
 
 SEND_BYTE
     PHA
-    LDA IO_MODE
-    BEQ SEND_SERIAL
-    ; Audio mode - no feedback needed for font streaming, toggle speaker/tapeout
-    STA TAPEOUT
-    PLA
-    RTS
 SEND_SERIAL
     LDA ACIA_STAT
     AND #$10
@@ -1868,59 +1858,95 @@ SEND_SERIAL
     RTS
 
 RECV_BYTE
-    LDA IO_MODE
-    BNE AUD_RECV_BYTE
-RECV_SERIAL
     LDA ACIA_STAT
     AND #$08
-    BEQ RECV_SERIAL
+    BEQ RECV_BYTE
     LDA ACIA_DATA
     RTS
 
-; --- ADTPro Audio / Cassette Protocol Receiver ---
-; Standard Apple II Audio FSK demodulator compatible with ADTPro BytesToWav
-; Leader 770 Hz, Sync 2000-2200 Hz, 0-bit 2000 Hz, 1-bit 1000 Hz
+; --- Font cache from the cassette input ---
+; & "/TAPE" reads two records in the standard Apple II cassette format
+; with the monitor READ routine. The first is 3 bytes, the length of the
+; cache and its checksum ($FF exclusive-ored with each byte), the second
+; the cache itself, put at $6000. Each record is a leader of at least 4
+; seconds, a sync bit, the bytes and their checksum
+; (tools/audio_font_streamer.py writes it as a WAV file, or sends it to an
+; emulator). READ prints ERR on a bad record but tells the caller nothing,
+; so the cache is checked here, and dropped if it does not match, so that
+; & strings never draw from a damaged one.
+MON_READ        = $FEFD
+MON_A1L         = $3C
+MON_A2L         = $3E
 
-AUD_RECV_BYTE
-    LDA #$08
-    STA AUD_BITCNT
-AUD_BIT_LOOP
-    LDA #$FF
-    STA AUD_TIMEY
-    JSR AUD_RD2BIT
-    ROL AUD_VAL
-    DEC AUD_BITCNT
-    BNE AUD_BIT_LOOP
-    LDA AUD_VAL
-    RTS
-
-AUD_RD2BIT
-    JSR AUD_RDBIT
-AUD_RDBIT
-    DEC AUD_TIMEY
-    BEQ AUD_TMOT
-    LDA KBD
-    BPL AUD_NO_KBD
-    STA KBDSTRB
-    CMP #$9B            ; ESC key to cancel
-    BEQ AUD_ESC
-AUD_NO_KBD
-    DEY
-    LDA TAPEIN
-    EOR AUD_LASTIN
-    BPL AUD_RDBIT
-    EOR AUD_LASTIN
-    STA AUD_LASTIN
-    CPY #$80            ; Carry set if Y >= $80 (1000 Hz, '1'), clear if Y < $80 (2000 Hz, '0')
-    RTS
-
-AUD_TMOT
+TAPE_LOAD
+    LDA #<TAPE_LEN
+    STA MON_A1L
+    LDA #>TAPE_LEN
+    STA MON_A1L+1
+    LDA #<(TAPE_LEN+2)
+    STA MON_A2L
+    LDA #>(TAPE_LEN+2)
+    STA MON_A2L+1
+    LDX #$00
+    JSR MON_READ
+    ; 1 to 9215 bytes (255 glyphs need 9184) fit below HIMEM
+    LDA TAPE_LEN+1
+    CMP #$24
+    BCS TAPE_BAD
+    ORA TAPE_LEN
+    BEQ TAPE_BAD
+    ; $6000 to $6000 + length - 1
+    LDA #$00
+    STA MON_A1L
+    LDA #$60
+    STA MON_A1L+1
     CLC
+    LDA TAPE_LEN
+    ADC #$FF
+    STA MON_A2L
+    LDA TAPE_LEN+1
+    ADC #$5F
+    STA MON_A2L+1
+    LDX #$00
+    JSR MON_READ
+    ; Check the cache against the checksum from the first record
+    LDA #$00
+    STA PTR_LO
+    LDA #$60
+    STA PTR_HI
+    LDA TAPE_LEN
+    STA SRC_LO          ; bytes left
+    LDA TAPE_LEN+1
+    STA SRC_HI
+    LDA #$FF
+    STA TEMP_BYTE
+    LDY #$00
+TAPE_SUM
+    LDA (PTR_LO),Y
+    EOR TEMP_BYTE
+    STA TEMP_BYTE
+    INC PTR_LO
+    BNE TAPE_SUM_NEXT
+    INC PTR_HI
+TAPE_SUM_NEXT
+    LDA SRC_LO
+    BNE TAPE_SUM_DEC
+    DEC SRC_HI
+TAPE_SUM_DEC
+    DEC SRC_LO
+    LDA SRC_LO
+    ORA SRC_HI
+    BNE TAPE_SUM
+    LDA TEMP_BYTE
+    CMP TAPE_LEN+2
+    BNE TAPE_BAD
     RTS
-AUD_ESC
-    PLA
-    PLA
+TAPE_BAD
+    LDA #$00
+    STA $6000           ; no HG mark, so the cache is not used
     RTS
+
+TAPE_LEN   .byte 0, 0, 0    ; length and checksum, from the first record
 
 SAVE_X     .byte 0
 SAVE_Y     .byte 0
