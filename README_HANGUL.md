@@ -23,6 +23,7 @@ Apple II의 원래 하드웨어는 1970년대 문자 생성 롬(ROM)에 묶여 �
 3. **Applesoft BASIC `&`(앰퍼샌드) 연동**: `10 & "\KHello World / 한글 / 漢字 / Привет / こんにちは\N"` 같은 문법으로 BASIC 프로그램 안에 다국어 문장을 바로 넣고 실행합니다.
 4. **Hex 안전 인코딩**: Apple II의 8비트 입력 처리와 Caps Lock 때문에 생기는 BASIC 토큰 충돌($80–$EA)과 `?SYNTAX ERROR`를 막습니다.
 5. **대화형 전체화면 터미널**: 키보드 입력, 한글 입력기(IME), 자동 줄바꿈을 지원하는 280×192 그래픽 콘솔을 제공합니다.
+6. **Apple II 키보드로 입력**: BASIC 작성 중 `Ctrl+K`를 누르면 입력 줄이 열려, 2벌식 한글(한자 변환 포함)·일본어 가나·러시아어·그리스어를 Windows 입력기와 같은 방식으로 조합해 칠 수 있습니다([Ctrl+K](#2-ctrlk-입력-2벌식한자가나러시아어그리스어) 참고).
 
 ---
 
@@ -314,6 +315,7 @@ python unicode_server.py
 1. RS-232–USB 변환 케이블로 PC와 Apple II의 Super Serial Card(슬롯 2)를 연결합니다.
 2. `python unicode_server.py --com COM3`을 실행합니다(9600 baud).
 3. Apple II에서 `unicode.dsk`로 부팅합니다.
+4. `Ctrl+K`로 입력하기 전에 //e의 Caps Lock을 끕니다. 서버가 글자의 대소문자로 Shift 글자(ㄲ, Я, Σ…)를 구분합니다.
 
 ### 3단계: 데모 실행
 

@@ -14,6 +14,7 @@ AppleWin의 C++ 소스 코드를 전혀 수정하지 않고, 표준 **Super Seri
 2. **BASIC 작성 중 특수키(`Ctrl+K`)를 통한 콘솔 직접 한글 / 漢字 입력**:
    - AppleWin 에뮬레이터에서 BASIC 코드를 작성하다가 한글이나 한자를 입력해야 할 때 **`Ctrl+K`** 키를 누릅니다.
    - `hangul_server` 콘솔 창에 `한글/漢字 입력 > ` 프롬프트가 나타나며, 콘솔창에서 바로 한글/한자를 타이핑하거나 복사한 긴 한자 텍스트를 붙여넣고 `Enter`를 누르면 Apple II의 현재 입력 행으로 자동 전달됩니다. (GUI 팝업을 원할 경우 `--popup` 옵션 제공)
+   - Apple II 키보드로 2벌식·한자 변환·가나·러시아어·그리스어를 바로 치는 `Ctrl+K` 입력 줄은 저장소 최상위의 `unicode_server.py`에만 있습니다. `driver/`의 드라이버는 두 서버 모두와 동작합니다([README_HANGUL.md](../README_HANGUL.md) 참고).
 
 3. **Caps Lock 및 BASIC 파서 충돌 방지 (Hex 안전 인코딩)**:
    - Apple II 키보드 루틴(`GETLN`) 및 Applesoft 파서(`PARSE`)는 8비트 코드를 BASIC 키워드 토큰($80~$EA)이나 줄바꿈/취소 제어문자($80~$9F)로 오인하여 `?SYNTAX ERROR`를 발생시켰습니다.

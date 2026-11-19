@@ -23,6 +23,7 @@ The original Apple II hardware is constrained by its 1970s character generator R
 3. **Applesoft BASIC `&` (Ampersand) Integration**: Easily embed and execute multilingual strings directly in standard Applesoft BASIC programs using syntax like `10 & "\KHello World / 한글 / 漢字 / Привет / こんにちは\N"`.
 4. **Hex-Safe Encoding Pipeline**: Prevents BASIC token collisions ($80–$EA) and `?SYNTAX ERROR` issues caused by Apple II 8-bit parsing conventions and Caps Lock states.
 5. **Interactive Full-Screen Terminal**: Provides a real-time 280×192 graphic console with interactive keyboard input, IME support, and automatic word wrapping.
+6. **Typing on the Apple II Keyboard**: `Ctrl+K` while writing BASIC opens an input line for 2-Bul-Sik Hangul with Hanja conversion, Japanese kana, Russian and Greek, composed the way the Windows IMEs do (see [Ctrl+K](#2-interactive-ctrlk-input-2-bul-sik-hanja-kana-russian-greek)).
 
 ---
 
@@ -314,6 +315,7 @@ python unicode_server.py
 1. Connect your PC to the Apple II Super Serial Card (Slot 2) using an RS-232 to USB adapter cable.
 2. Run `python unicode_server.py --com COM3` (9600 baud).
 3. Boot `unicode.dsk` on your Apple II.
+4. Turn Caps Lock off on the //e before typing with `Ctrl+K`: the server tells Shift letters (ㄲ, Я, Σ…) from the letter's case.
 
 ### Step 3: Run the Demonstration
 
