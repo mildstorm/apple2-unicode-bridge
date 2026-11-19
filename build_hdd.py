@@ -14,7 +14,7 @@ The image (ProDOS block order, .hdv / .po) holds:
                         a sparse 2 MB file: only blocks with glyphs take disk
   HDDEMO, JEMANG        demo programs
 
-32M (65535 blocks) holds Hangul, Hanja (CJK Unified Ideographs), kana,
+32M (65535 blocks) holds Hangul, Hanja (CJK Unified Ideographs and Extension A), kana,
 Latin, Greek, Cyrillic and symbols. 800K leaves the Hanja out: spread over
 20,992 code points they need about 1,300 blocks of the 1,600.
 
@@ -54,12 +54,13 @@ RANGES = [
     (0x3000, 0x30FF, "CJK punctuation, kana"),
     (0x3130, 0x318F, "Hangul compatibility jamo"),
     (0x3200, 0x32FF, "enclosed CJK"),
+    (0x3400, 0x4DBF, "CJK Extension A (rare Hanja)"),
     (0x4E00, 0x9FFF, "CJK Unified Ideographs (Hanja)"),
     (0xAC00, 0xD7A3, "Hangul syllables"),
     (0xF900, 0xFAFF, "CJK compatibility ideographs"),
     (0xFF00, 0xFFEF, "fullwidth forms"),
 ]
-HANJA_RANGES = {0x4E00, 0xF900}
+HANJA_RANGES = {0x3400, 0x4E00, 0xF900}
 
 STARTUP = """
 10 D$ = CHR$ (4)

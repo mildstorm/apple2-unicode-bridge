@@ -375,7 +375,7 @@ RUN DEMO
 | :--- | :--- | :--- |
 | DOS 3.3 `unicode.dsk` + server | `$6000` cache (characters baked in by `build_font_dsk.py`); `POKE 24576,0` sends everything to the server (any character, old Hangul, colour) | Server |
 | DOS 3.3 `unicode.dsk`, no server | `$6000` cache only | — |
-| ProDOS hard disk, no server | `UFONT`: any of its 35,897 characters | `Ctrl+K` onboard (2-Bul-Sik, Hanja); no terminal mode |
+| ProDOS hard disk, no server | `UFONT`: any of its 42,489 characters | `Ctrl+K` onboard (2-Bul-Sik, Hanja); no terminal mode |
 | ProDOS hard disk + server | `UFONT`; `POKE 16387,0` sends them to the server | `Ctrl+K` onboard; `POKE 16453,1` the server. Terminal mode: server |
 | No disk of fonts, no serial card | `& "/TAPE"` loads a cache through the cassette input ([Cassette Input](#-cassette-input-the-font-cache-without-a-serial-card-or-disk)) | — |
 
@@ -447,7 +447,7 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 
 | `--size` | Glyphs | Disk used |
 | :--- | :--- | :--- |
-| `32M` (65,535 blocks, default) | 35,897: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility and conjoining jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs | 1.1 MB |
+| `32M` (65,535 blocks, default) | 42,489: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility and conjoining jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs and the 6,592 of Extension A | 1.4 MB |
 | `800K` (1,600 blocks) | 13,238: the same without Hanja (spread over 20,992 code points they need about 1,300 blocks) | 477 KB |
 
 `--font` picks the font chain (default `Galmuri14.ttf, NotoSerifCJK16.ttf`).
@@ -512,7 +512,7 @@ Checked in AppleWin and on the STM32F769I-DISCO //e; not yet on a real Apple II.
 | | Hard disk alone (onboard) | Needs the server (SSC) |
 | :--- | :--- | :--- |
 | **Typing** (`Ctrl+K`) | 2-Bul-Sik Hangul, Hanja (`Ctrl+J`), A (as typed) | Japanese kana, Russian, Greek (`Ctrl+L`); PC input and paste (`Ctrl+P`) |
-| **Drawing** (`&`) | The 35,897 glyphs of `UFONT`: Hangul, Hanja (CJK Unified Ideographs), kana, Latin, Greek, Cyrillic, symbols, Hangul jamo | Old Hangul composed into one cell, emoji, Arabic, Hebrew (5b), the finer colour rasteriser |
+| **Drawing** (`&`) | The 42,489 glyphs of `UFONT`: Hangul, Hanja (CJK Unified Ideographs and Extension A), kana, Latin, Greek, Cyrillic, symbols, Hangul jamo | Old Hangul composed into one cell, emoji, Arabic, Hebrew (5b), the finer colour rasteriser |
 | **Terminal mode** (`&` alone) | — | Yes |
 
 **Limits and notes**
