@@ -169,6 +169,15 @@ You can print multilingual Unicode text right from Applesoft BASIC:
 When executed (`RUN`), the driver switches to HGR graphics mode and renders high-density typographic glyphs with accurate letter spacing and vertical alignment.
 
 ### 2. Interactive `Ctrl+K` Input (2-Bul-Sik, Hanja, Kana, Russian, Greek)
+
+> [!IMPORTANT]
+> **Super Serial Card (Slot 2) & PC Server Required for Multilingual Input**
+> - **Why it is required**: The Apple II resident 6502 driver (`$4000`, ~5 KB) is an ultra-lightweight I/O stub. It intentionally does not embed the complex 2-Bul-Sik Korean automata (choseong/jungseong/jongseong combination, double vowel/consonant rules, backspace jamo decomposition, Hanja dictionary lookup, romaji-to-kana tables). Every keystroke typed on the Apple II keyboard is dispatched across **Slot 2 Super Serial Card (6551 ACIA communication chip)** to the host PC server (`unicode_server.py`), which composes the typography in real time and streams rendered glyph bitmaps back to the Apple II screen.
+> - **Without a Super Serial Card (or emulator serial emulation), typing live Hangul or multilingual text on the Apple II keyboard is not possible.**
+> - **Setup instructions**:
+>   - **AppleWin (Emulator)**: Go to **Configuration (F10) → [Serial] tab** and check **Slot 2 Serial Port** as **`TCP`** (default port 1977). No physical hardware required.
+>   - **Real Apple II Hardware**: Install a physical **Super Serial Card (SSC)** in **Slot 2**, connect via RS-232 / USB-serial cable to your PC, and start `python unicode_server.py --com COMx`.
+
 While typing a BASIC program, press **`Ctrl+K`** and type on the Apple II keyboard. An input line opens on the last HGR row in mixed mode, with the four text lines (and so the BASIC line, once it is near the bottom) below it. As in the Windows IMEs, what is being composed is shown inverse and commits once the next key cannot join it.
 
 | Mode (col 0) | Typing | Example |
@@ -422,7 +431,15 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 **Putting it on the machine**
 - **CFFA3000, Floppy Emu**: copy `unicode.hdv` onto the card as it is.
 - **CFFA / MicroDrive partition, SCSI disk**: write it with CiderPress or ADTPro.
-- **AppleWin**: **Configuration → Slot 7: Hard disk controller**, attach the image as HDD 1, boot (`-s7 hdc -h1 unicode.hdv` on the command line).
+- **AppleWin**:
+  - Open **Configuration (F10) → [Slots] tab → Slot 7: Hard disk controller**.
+  - Click the **HDD 1** icon (the rectangular hard-disk icon on the right toolbar) and select `unicode.hdv`.  
+    *(Caution: Do NOT insert into floppy Drive 1 at the top, or it will fail with `unsupported_hdv`. If you see an `already mounted in slot 7, drive 2` warning, right-click the HDD 2 icon to unplug it, or click the [Swap] button in the Slot 7 dialog).*
+  - Ensure floppy Drive 1 is empty (right-click to Eject if loaded), then press **`F2`** to reboot from the hard disk.
+  - Or launch directly via command line:
+    ```powershell
+    & "AppleWin.exe" -s7 hdc -h1 unicode.hdv
+    ```
 - **STM32F769I-DISCO //e** ([STM32F769I-DISCO Apple II emulator](https://github.com/mildstorm/STM32F769I-DISCO)): its SmartPort card in slot 7 runs a `.HDV`/`.PO` image from the SD card. Upload it while the board runs, then choose it on the board's command line (TCP 2323); the choice is kept on the SD card:
   ```powershell
   .\tools\sd-upload.ps1 ..\..\apple2-unicode-bridge\unicode.hdv -Name UNICODE.HDV
@@ -444,6 +461,34 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 | `16452` (`$4044`) | The ProDOS error of the last failed font-file call (e.g. 70 = file not found), 0 if none |
 
 Without the server, old Hangul syllables (which need HarfBuzz) and the coloured-text rasteriser are not available, and `Ctrl+K` needs the server to compose. With the server connected, `Ctrl+K` works under ProDOS as under DOS 3.3. `python tools/test_hdd_live.py [image]` boots an image in AppleWin, runs both demos and puts AppleWin's settings back afterwards.
+
+### 3. How to Input Korean After Hard-Disk Boot (`unicode.hdv`)
+
+There is an important distinction between **Rendering (Drawing)** and **Typing (Input)** after booting from the hard disk:
+
+1. **Rendering / Drawing Korean & Hanja — Standalone without PC Server**:
+   - Because `unicode.hdv` contains the complete `UFONT` binary (~34,000 glyphs), demo programs like **`RUN HDDEMO`** or **`RUN JEMANG`**, as well as pre-encoded BASIC programs, **render 100% standalone with no PC server running**.
+
+2. **Typing Korean & Multilingual Text on the Apple II Keyboard (`Ctrl+K`) — Super Serial Card (Slot 2) & PC Server Required**:
+   - **Why Super Serial Card is Required**:
+     The resident Apple II 6502 driver (`UNICODE.BIN`) is a compact ~5 KB stub. The real-time 2-Bul-Sik Hangul composition automata (jamo combinator, Hanja dictionary, decomposition on backspace, romaji-to-kana mapping) is handled on the host PC server (`unicode_server.py`). Whenever a key is pressed, the key code is transmitted across **Slot 2 Super Serial Card (6551 ACIA communication chip)** to the PC, and the server returns the composed typography back via serial to render on the screen.
+   - **Without a Super Serial Card communication link, live typing in Hangul or multilingual scripts is impossible.**
+   - **How to Set Up & Type Multilingual Text**:
+     1. **Set Up Communications (Enable Super Serial Card)**:
+        - **AppleWin (Emulator)**: Open **Configuration (F10) → [Serial] tab** and set **Slot 2 Serial Port** to **`TCP`** (default port 1977). This activates the emulated Super Serial Card.
+        - **Real Apple II Hardware**: Install a physical **Super Serial Card (SSC)** in **Slot 2** and connect it to your PC with an RS-232 / USB-serial cable.
+     2. **Start Host Server**: In your PC terminal, run `python unicode_server.py` to establish the connection (use `--com COMx` for real hardware).
+     3. **Type in BASIC**:
+        - At the `]` prompt, type `10 & "` and press **`Ctrl+K`**.
+        - A graphic composition bar opens at the bottom with `[한]`. Type using standard 2-Bul-Sik (e.g. `gksrmf` → 한글).
+        - Press `Ctrl+J` (or down arrow ↓) to convert the syllable to Hanja from the candidate palette (`1`–`9`).
+        - To type Japanese Kana, Russian, or Greek, press `Ctrl+L` to cycle through languages (`[한]` → `[あ]` → `[ア]` → `[Я]` → `[Ω]`).
+        - Press **`Return`** to commit the string into the BASIC line as hex-safe `\K...[HEX]...\N`.
+        - Close the quotes with `"` and press `Enter`, then type **`RUN`** to execute.
+     4. **Interactive Full-Screen Terminal Mode**:
+        - At the `]` prompt, simply type **`&`** and press `Enter` to enter full-screen 280×192 graphics terminal mode. Type directly with real-time Korean composition (`Ctrl+K` or backtick ``` ` ``` to switch Han/Eng, `ESC` to exit).
+     5. **Host PC Paste (`Ctrl+P`)**:
+        - While the `Ctrl+K` bar is open, press `Ctrl+P` to open the PC console/popup and paste text directly.
 
 ---
 

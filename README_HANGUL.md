@@ -169,6 +169,15 @@ Applesoft BASIC에서 바로 다국어 유니코드 문장을 출력할 수 있�
 실행(`RUN`)하면 드라이버가 HGR 그래픽 모드로 전환하고, 글자 간격과 세로 정렬을 맞춘 고밀도 글리프를 그립니다.
 
 ### 2. `Ctrl+K` 입력 (2벌식·한자·가나·러시아어·그리스어)
+
+> [!IMPORTANT]
+> **다국어 입력(한글/한자/가나/러시아어/그리스어) 시 Super Serial Card (Slot 2) 및 PC 서버 필수**
+> - **필요한 이유**: Apple II 상주 6502 드라이버(`$4000`, 약 5KB)는 초경량 입출력 스텁으로, 복잡한 2벌식 오토마타(초성·중성·종성 결합, 이중모음/받침 조합, 백스페이스 자모 분해, 한자 사전 검색, 가나 로마자 매핑) 코드를 내장하고 있지 않습니다. Apple II 키보드를 누를 때마다 **Slot 2의 Super Serial Card (6551 ACIA 통신 칩)** 를 통해 PC 호스트 서버(`unicode_server.py`)로 키 코드를 전송하고, PC 서버가 실시간으로 조합한 글리프 비트맵과 텍스트를 시리얼로 Apple II에 되돌려주어 화면에 띄웁니다.
+> - **따라서 Super Serial Card(또는 에뮬레이터의 시리얼 포트 에뮬레이션)가 연결되어 있지 않으면 Apple II 키보드로 실시간 한글 및 다국어를 타이핑할 수 없습니다.**
+> - **환경별 설정 방법**:
+>   - **AppleWin (에뮬레이터)**: 실제 카드를 살 필요 없이, **`F10` (설정) → [Serial] 탭**에서 **Slot 2 Serial Port**를 **`TCP`** (기본 1977 포트)로 체크합니다.
+>   - **Apple II 실기**: 본체 메인보드의 **Slot 2에 실제 Super Serial Card (SSC)** 를 장착하고, RS-232/USB 시리얼 케이블로 PC와 연결한 뒤 PC에서 `python unicode_server.py --com COMx`로 서버를 엽니다.
+
 BASIC 프로그램을 입력하다가 **`Ctrl+K`** 를 누르면 Apple II 키보드로 입력할 수 있습니다. 혼합 모드 HGR의 마지막 줄에 입력 줄이 열리고, 그 아래 텍스트 4줄이 보입니다. BASIC 줄이 화면 아래쪽에 있으면 함께 보입니다. Windows 입력기처럼 조합 중인 글자는 반전으로 보이고, 다음 키가 붙을 수 없을 때 확정됩니다.
 
 | 모드(0번 칸) | 입력 | 예 |
@@ -422,7 +431,15 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 **기계에 넣기**
 - **CFFA3000, Floppy Emu**: `unicode.hdv`를 카드에 그대로 복사합니다.
 - **CFFA·MicroDrive 파티션, SCSI 디스크**: CiderPress나 ADTPro로 씁니다.
-- **AppleWin**: **Configuration → Slot 7: Hard disk controller**로 하고 이미지를 HDD 1에 붙여 부팅합니다(명령줄로는 `-s7 hdc -h1 unicode.hdv`).
+- **AppleWin**:
+  - **Configuration(F10) → [Slots] 탭 → Slot 7: Hard disk controller**로 설정합니다.
+  - 우측 도구 모음의 **HDD 1**(직사각형 하드디스크 모양 아이콘)을 클릭해 `unicode.hdv`를 지정합니다.  
+    *(주의: 상단의 플로피 드라이브 아이콘 Drive 1에 넣으면 `unsupported_hdv` 오류가 발생합니다. 만약 `already mounted in slot 7, drive 2` 경고가 뜨면 HDD 2 아이콘을 우클릭해 언플러그하거나 설정 창의 [Swap] 버튼을 누르세요.)*
+  - 플로피 드라이브(Drive 1)에 디스크가 꽂혀 있으면 플로피로 먼저 부팅을 시도하므로, Drive 1을 우클릭해 꺼낸(Eject) 뒤 **`F2`** 로 재부팅합니다.
+  - 명령줄로 한 번에 실행하려면:
+    ```powershell
+    & "AppleWin.exe" -s7 hdc -h1 unicode.hdv
+    ```
 - **STM32F769I-DISCO //e** ([STM32F769I-DISCO Apple II 에뮬레이터](https://github.com/mildstorm/STM32F769I-DISCO)): 슬롯 7의 SmartPort 카드가 SD 카드의 `.HDV`/`.PO` 이미지를 씁니다. 보드가 돌고 있을 때 올린 뒤, 보드 명령줄(TCP 2323)에서 고릅니다. 고른 것은 SD 카드에 기억됩니다:
   ```powershell
   .\tools\sd-upload.ps1 ..\..\apple2-unicode-bridge\unicode.hdv -Name UNICODE.HDV
@@ -444,6 +461,35 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 | `16452` (`$4044`) | 마지막으로 실패한 글꼴 파일 호출의 ProDOS 오류(예: 70 = 파일 없음), 없으면 0 |
 
 서버가 없으면 옛한글 음절(HarfBuzz 필요)과 컬러 글자 래스터화는 쓸 수 없고, `Ctrl+K` 조합도 서버가 해야 합니다. 서버를 연결하면 ProDOS에서도 DOS 3.3과 똑같이 `Ctrl+K`를 쓸 수 있습니다. `python tools/test_hdd_live.py [이미지]`는 AppleWin에서 이미지를 부팅해 두 예제를 실행하고, 끝나면 AppleWin 설정을 원래대로 돌려 놓습니다.
+
+### 3. 하드디스크(`unicode.hdv`) 부팅 후 한글 입력 방법
+
+하드디스크로 부팅한 후 한글을 사용하는 방식은 **출력(그리기)**과 **입력(타이핑)**에 차이가 있습니다:
+
+1. **한글/한자 출력(그리기) — PC 서버 없이 단독 작동**:
+   - `unicode.hdv` 내에 약 3만 4천 글리프가 담긴 글꼴 파일(`UFONT`)이 들어 있으므로, **`RUN HDDEMO`**나 **`RUN JEMANG`** 같은 데모 프로그램이나 미리 작성된 BASIC 코드는 **PC 서버 연결 없이 100% 단독으로 화면에 출력**됩니다.
+
+2. **Apple II 키보드로 직접 한글·다국어 입력하기 (`Ctrl+K`) — Super Serial Card (Slot 2) 및 PC 서버 필수**:
+   - **Super Serial Card가 필요한 이유**:
+     Apple II 상주 6502 드라이버(`UNICODE.BIN`)는 약 5KB의 초경량 입출력 스텁입니다. 2벌식 조합 오토마타(초성·중성·종성 결합, 이중모음/받침 처리, 백스페이스 분해, 한자 사전, 가나 로마자 매핑) 엔진은 PC 호스트 서버(`unicode_server.py`)가 처리합니다. 키보드를 누를 때마다 **Slot 2의 Super Serial Card (6551 ACIA 통신 칩)** 를 통해 PC로 키 코드를 전송하고, 서버가 조합한 결과를 시리얼로 Apple II에 되돌려주어 화면에 그립니다.
+   - **따라서 Super Serial Card 통신 경로가 없으면 실시간 다국어 타이핑이 불가능합니다.**
+   - **한글 및 다국어를 입력하는 방법**:
+     1. **통신 준비 (Super Serial Card 활성화)**:
+        - **AppleWin (에뮬레이터)**: **Configuration(F10) → [Serial] 탭 → Slot 2 Serial Port**를 **`TCP`** (기본 포트 1977)로 설정합니다. (가상 Super Serial Card가 활성화됩니다.)
+        - **Apple II 실기**: 본체 **Slot 2에 Super Serial Card (SSC)** 를 장착하고 RS-232/USB 시리얼 케이블로 PC와 연결합니다.
+     2. **PC 서버 실행**: PC 터미널에서 `python unicode_server.py`를 실행하여 Apple II와 연결합니다 (실기는 `--com COMx`).
+     3. **BASIC 코드에서 입력**:
+        - `]` 프롬프트에서 `10 & "` 를 입력하고, 따옴표 뒤에서 **`Ctrl+K`** 를 누릅니다.
+        - 하단에 `[한]` 그래픽 입력창이 열리면 2벌식 타자(예: `gksrmf` → 한글)를 칩니다.
+        - `Ctrl+J` (또는 아래 화살표 ↓)를 누르면 한자 변환 목록이 뜨며 `1`~`9`로 선택할 수 있습니다.
+        - 일본어 가나, 러시아어, 그리스어를 치려면 `Ctrl+L`로 언어를 전환합니다 (`[한]` → `[あ]` → `[ア]` → `[Я]` → `[Ω]`).
+        - 입력을 마친 뒤 **`Return`** 을 누르면 BASIC 입력 줄에 Hex 안전 인코딩(`\K한글\N`)이 자동으로 채워집니다.
+        - 따옴표(`"`)를 닫고 `Enter`를 친 뒤 **`RUN`** 을 실행하면 화면에 출력됩니다.
+     4. **대화형 전체화면 터미널 모드**:
+        - `]` 프롬프트에서 **`&`** 만 입력하고 `Enter`를 치면 280×192 전체화면 그래픽 터미널로 진입합니다.
+        - 여기서 메모장처럼 바로 2벌식 한글을 타이핑할 수 있으며, `Ctrl+K` 또는 백틱(``` ` ```)으로 한/영 전환을 하고 `ESC`로 빠져나옵니다.
+     5. **PC 클립보드 붙여넣기 (`Ctrl+P`)**:
+        - `Ctrl+K` 입력창에서 `Ctrl+P`를 누르면 PC 콘솔/팝업창이 열려 긴 한글 문장이나 한자를 직접 붙여넣을 수 있습니다.
 
 ---
 
