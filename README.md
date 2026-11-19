@@ -212,7 +212,7 @@ Hanja are converted a syllable at a time, and kana stay kana (there is no kana-t
 
 The onboard line guesses Caps Lock the same way from the letter's case (it never sees Shift either).
 
-`python unicode_server.py --pc-input` makes SSC mode open the PC input straight away. Tests: `python tools/test_dubeol_ime.py` (2-Bul-Sik rules), `python tools/test_onboard_ime.py` (the driver's 6502 automaton on the same cases, in py65), `python tools/test_ime_engines.py` (kana, Russian, Greek, Hanja, mode keys) and `python tools/test_ime_live.py` (types lines in AppleWin and saves screenshots).
+`python unicode_server.py --pc-input` makes SSC mode open the PC input straight away. Tests: `python tools/test_dubeol_ime.py` (2-Bul-Sik rules), `python tools/test_onboard_ime.py` (the driver's 6502 automaton on the same cases, in py65), `python tools/test_ime_engines.py` (kana, Russian, Greek, Hanja, mode keys), `python tools/test_rtl_text.py` (Arabic forms, right-to-left order) and `python tools/test_ime_live.py` (types lines in AppleWin and saves screenshots).
 
 ### 3. Hex-Safe Stream Protocol (`\K ... \N`)
 Standard Apple II line input (`GETLN`) and Applesoft keyword parsing (`PARSE`) treat byte values `$80`–`$FF` as internal BASIC tokens or control codes. Raw UTF-8 byte streams cause immediate syntax errors.
@@ -234,6 +234,13 @@ The Hunminjeongeum preface streamed over the SSC to an emulated Apple //e (an ST
 
 ![Hunminjeongeum preface, old Hangul composed a syllable to a cell](docs/images/board_hunminjeongeum.png)
 
+### 5b. Emoji, Arabic and Hebrew (through the server)
+The server's last fallback fonts are Segoe UI Symbol (emoji and symbols, as monochrome outlines, 4-byte UTF-8 such as 😀 👍 included) and Tahoma (Arabic, Hebrew, Thai; drawn at 18 px so the letters are as tall as Hangul). Before drawing, `rtl_text.py` gives each Arabic letter its contextual form from the Arabic Presentation Forms (isolated, initial, medial, final, lam-alef as one ligature) and turns each right-to-left run (Arabic, Hebrew) into display order, numbers inside it kept left to right. The `\K…\N` in the program keeps the logical order.
+- Server only (`POKE 16387,0` on the hard disk, or the DOS 3.3 floppy with `POKE 24576,0`): `UFONT` has no emoji or Arabic, and the driver does not reorder text.
+- A letter to a 14×16 cell, so Arabic joins do not quite meet across cells; the line is left to right, with right-to-left runs inside it (no right-to-left paragraphs).
+- Example: `10 & "\KD8B3D984D8A7D985\N \KD7A9D79CD795D79D\N \KF09F9880\N"` → سلام שלום 😀. `python tools/test_rtl_text.py` checks the forms and the order.
+
+![Emoji, CJK Extension B, Arabic and Hebrew on the STM32F769I-DISCO //e, through the server](docs/images/board_rtl_emoji.png)
 ### 6. Standalone Execution via Font Subsetting (No PC Server Required!)
 While the live font server streams unlimited Unicode glyphs dynamically, you can also bake the exact subset of fonts used by your BASIC programs directly into the `.dsk` disk image:
 - **Zero PC dependency**: Once baked, the Apple II boots and runs multilingual graphics programs entirely standalone from floppy disk.
@@ -248,6 +255,7 @@ While the live font server streams unlimited Unicode glyphs dynamically, you can
 | :--- | :--- |
 | **`unicode_server.py`** | Universal Unicode font co-processor & streaming serial/TCP server (Python 3). |
 | **`old_hangul.py`** | Old Hangul (Hunminjeongeum) syllable composition with HarfBuzz, used by the server. |
+| **`rtl_text.py`** | Arabic contextual forms and right-to-left display order, used by the server. |
 | **`apple_ime.py`** | `Ctrl+K` input engines besides 2-Bul-Sik (kana, Russian, Greek) and the Hanja lookup. |
 | **`hanja_table.txt`** | Hangul reading → Hanja candidates, built from Unihan by `tools/build_hanja_table.py`. |
 | **`build_hdd.py`** | Builds a bootable ProDOS hard-disk image with the whole font (`UFONT`) for drawing without the server. |
@@ -470,7 +478,7 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 
 Under ProDOS the driver takes its 1 KB file buffer from BASIC.SYSTEM (`GETBUFR`), so HIMEM drops from 38400 to 37376 (`$9200`). The driver itself fills `$4000`–`$5EFF`.
 
-Without the server, old Hangul is drawn one jamo to a cell (composing a syllable into one cell needs the server's HarfBuzz, `POKE 16387,0`), and colour is the driver's own (the server's 7-column colour rasteriser draws it finer). `Ctrl+K` composes on the Apple II (2-Bul-Sik and Hanja; see below), or through the server with `POKE 16453,1`. `python tools/test_hdd_live.py [image]` boots an image in AppleWin, runs both demos and puts AppleWin's settings back afterwards.
+Without the server, old Hangul is drawn one jamo to a cell (composing a syllable into one cell needs the server's HarfBuzz, `POKE 16387,0`), colour is the driver's own (the server's 7-column colour rasteriser draws it finer), and emoji, Arabic and Hebrew are not in `UFONT` (the server draws them, see 5b). `Ctrl+K` composes on the Apple II (2-Bul-Sik and Hanja; see below), or through the server with `POKE 16453,1`. `python tools/test_hdd_live.py [image]` boots an image in AppleWin, runs both demos and puts AppleWin's settings back afterwards.
 
 ### 3. How to Input Korean After Hard-Disk Boot (`unicode.hdv`)
 

@@ -58,8 +58,14 @@ except ImportError as e:
     print(f"[Old Hangul] {e}: old Hangul is drawn jamo by jamo (pip install uharfbuzz)")
 
 
+import rtl_text
+
+
 def compose_old_hangul(text):
-    """text with each old Hangul syllable as one character for rasterize()."""
+    """text as the cells to draw, left to right: each old Hangul syllable as
+    one unit for rasterize(), Arabic in its joined forms and right-to-left
+    runs (Arabic, Hebrew) in display order (rtl_text)."""
+    text = rtl_text.shape_for_display(text)
     return OLD_HANGUL.split(text) if OLD_HANGUL is not None else text
 
 # Default Font Candidates: prioritize Galmuri / Gulim (굴림/돋움) which has pixel-perfect 14x14 bitmaps for Korean & Hanja
@@ -87,7 +93,14 @@ FONT_CANDIDATES = [
     os.path.join(EXE_DIR, "NotoSerifCJK16.ttf"),
     os.path.join(SCRIPT_DIR, "NotoSerifCJK16.ttf"),
     os.path.join(SCRIPT_DIR, "fonts", "NotoSerifCJK16.ttf"),
-    "NotoSerifCJK16.ttf"
+    "NotoSerifCJK16.ttf",
+    # Last, for what none of the above has: emoji and symbols (monochrome
+    # outlines), then Arabic (with its presentation forms), Hebrew and Thai
+    r"C:\Windows\Fonts\seguisym.ttf",
+    r"C:\Windows\Fonts\tahoma.ttf",
+    "/System/Library/Fonts/Apple Symbols.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
 ]
 
 # Hanja Variant Mapping: map common CJK variant ideographs (신자체/간체/이체자) to standard Korean Hanja
@@ -534,6 +547,8 @@ def auto_detect_font_config(font_path):
         return 16, 0, True  # 16px DOS fonts box-centered
     elif 'gulim' in base or 'dotum' in base:
         return 14, 0, False # 14px Windows embedded bitmap
+    elif 'tahoma' in base:
+        return 18, 0, False # Arabic and Hebrew: at 14px they come out at half the height of Hangul
     return 14, 0, False
 
 class HangulRasterizer:

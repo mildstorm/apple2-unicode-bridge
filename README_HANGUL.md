@@ -212,7 +212,7 @@ BASIC 프로그램을 입력하다가 **`Ctrl+K`** 를 누르면 Apple II 키보
 
 온보드 입력 줄도 같은 방식으로 글자의 대소문자에서 Caps Lock을 판단합니다(Shift가 보이지 않는 것은 마찬가지).
 
-`python unicode_server.py --pc-input`으로 실행하면 SSC 방식에서 `Ctrl+K`가 PC 입력을 바로 엽니다. 테스트: `python tools/test_dubeol_ime.py`(2벌식 규칙), `python tools/test_onboard_ime.py`(드라이버의 6502 오토마타를 py65에서 같은 사례로), `python tools/test_ime_engines.py`(가나·러시아어·그리스어·한자·모드 키), `python tools/test_ime_live.py`(AppleWin에서 줄을 입력해 화면 저장).
+`python unicode_server.py --pc-input`으로 실행하면 SSC 방식에서 `Ctrl+K`가 PC 입력을 바로 엽니다. 테스트: `python tools/test_dubeol_ime.py`(2벌식 규칙), `python tools/test_onboard_ime.py`(드라이버의 6502 오토마타를 py65에서 같은 사례로), `python tools/test_ime_engines.py`(가나·러시아어·그리스어·한자·모드 키), `python tools/test_rtl_text.py`(아랍어 모양, 오른쪽에서 왼쪽 순서), `python tools/test_ime_live.py`(AppleWin에서 줄을 입력해 화면 저장).
 
 ### 3. Hex 안전 스트림 프로토콜 (`\K ... \N`)
 Apple II의 줄 입력 루틴(`GETLN`)과 Applesoft 키워드 해석기(`PARSE`)는 `$80`–`$FF` 바이트를 BASIC 내부 토큰이나 제어 코드로 취급합니다. UTF-8 바이트를 그대로 넣으면 곧바로 문법 오류가 납니다.
@@ -234,6 +234,13 @@ Applesoft 프롬프트 `]`에서 `&`만 입력하면 서버가 그리는 전체�
 
 ![훈민정음 서문, 옛한글 음절마다 한 칸](docs/images/board_hunminjeongeum.png)
 
+### 5b. 이모지·아랍어·히브리어 (서버로)
+서버의 마지막 대체 글꼴은 Segoe UI Symbol(이모지와 기호를 흑백 윤곽으로, 😀 👍 같은 4바이트 UTF-8 포함)과 Tahoma(아랍어·히브리어·태국어, 한글과 키가 맞도록 18px)입니다. 그리기 전에 `rtl_text.py`가 아랍어 글자마다 아랍어 표시형(Presentation Forms)에서 앞뒤에 따른 모양(독립·어두·어중·어말, 람-알리프는 한 합자)을 고르고, 오른쪽에서 왼쪽으로 쓰는 구간(아랍어·히브리어)을 화면 순서로 뒤집습니다. 그 안의 숫자는 왼쪽에서 오른쪽 그대로입니다. 프로그램의 `\K…\N`은 원래 순서 그대로입니다.
+- 서버에서만 됩니다(하드디스크에서는 `POKE 16387,0`, DOS 3.3 플로피에서는 `POKE 24576,0`). `UFONT`에는 이모지와 아랍어가 없고, 드라이버는 글자 순서를 바꾸지 않습니다.
+- 한 글자가 14×16 한 칸이라 아랍어의 이음이 칸 사이에서 딱 맞지는 않습니다. 줄은 왼쪽에서 오른쪽이고, 그 안의 오른쪽에서 왼쪽 구간만 뒤집습니다(오른쪽에서 왼쪽 문단은 없음).
+- 예: `10 & "\KD8B3D984D8A7D985\N \KD7A9D79CD795D79D\N \KF09F9880\N"` → سلام שלום 😀. `python tools/test_rtl_text.py`가 모양과 순서를 확인합니다.
+
+![STM32F769I-DISCO //e에서 서버로 그린 이모지, CJK 확장 B 한자, 아랍어, 히브리어](docs/images/board_rtl_emoji.png)
 ### 6. 폰트 서브셋으로 독립 실행 (PC 서버 불필요!)
 PC 폰트 서버는 유니코드 글리프를 제한 없이 보내 주지만, BASIC 프로그램에서 실제로 쓰는 글자만 골라 `.dsk` 디스크 이미지에 넣어 둘 수도 있습니다:
 - **PC 의존 없음**: 한 번 넣어 두면 Apple II가 플로피 디스크만으로 부팅해 다국어 그래픽 프로그램을 실행합니다.
@@ -248,6 +255,7 @@ PC 폰트 서버는 유니코드 글리프를 제한 없이 보내 주지만, BA
 | :--- | :--- |
 | **`unicode_server.py`** | 범용 유니코드 폰트 처리 및 시리얼/TCP 스트리밍 서버 (Python 3). |
 | **`old_hangul.py`** | 서버가 쓰는 옛한글(훈민정음) 음절 조합 모듈 (HarfBuzz). |
+| **`rtl_text.py`** | 서버가 쓰는 아랍어 글자 모양과 오른쪽에서 왼쪽 표시 순서. |
 | **`apple_ime.py`** | 2벌식 외의 `Ctrl+K` 입력기(가나·러시아어·그리스어)와 한자 찾기. |
 | **`hanja_table.txt`** | 한글 읽기 → 한자 후보 표. `tools/build_hanja_table.py`가 Unihan으로 만듦. |
 | **`build_hdd.py`** | 서버 없이 그리기 위한 글꼴 전체(`UFONT`)를 담은, 부팅 가능한 ProDOS 하드디스크 이미지를 만듦. |
@@ -470,7 +478,7 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 
 ProDOS에서는 드라이버가 1KB 파일 버퍼를 BASIC.SYSTEM에서 받으므로(`GETBUFR`) HIMEM이 38400에서 37376(`$9200`)으로 내려갑니다. 드라이버 자체는 `$4000`–`$5EFF`를 차지합니다.
 
-서버가 없으면 옛한글은 자모를 한 칸씩 그립니다(한 음절을 한 칸에 모아 쓰려면 서버의 HarfBuzz가 필요, `POKE 16387,0`). 컬러는 드라이버가 직접 칠합니다(서버의 7칸 컬러 래스터화가 더 곱게 그림). `Ctrl+K`는 Apple II 안에서 조합하고(2벌식·한자, 아래 참고), `POKE 16453,1`이면 서버로 조합합니다. `python tools/test_hdd_live.py [이미지]`는 AppleWin에서 이미지를 부팅해 두 예제를 실행하고, 끝나면 AppleWin 설정을 원래대로 돌려 놓습니다.
+서버가 없으면 옛한글은 자모를 한 칸씩 그립니다(한 음절을 한 칸에 모아 쓰려면 서버의 HarfBuzz가 필요, `POKE 16387,0`). 컬러는 드라이버가 직접 칠합니다(서버의 7칸 컬러 래스터화가 더 곱게 그림). 이모지·아랍어·히브리어는 `UFONT`에 없어서 서버가 그립니다(5b 참고). `Ctrl+K`는 Apple II 안에서 조합하고(2벌식·한자, 아래 참고), `POKE 16453,1`이면 서버로 조합합니다. `python tools/test_hdd_live.py [이미지]`는 AppleWin에서 이미지를 부팅해 두 예제를 실행하고, 끝나면 AppleWin 설정을 원래대로 돌려 놓습니다.
 
 ### 3. 하드디스크(`unicode.hdv`) 부팅 후 한글 입력 방법
 
