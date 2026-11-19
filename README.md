@@ -181,6 +181,7 @@ When executed (`RUN`), the driver switches to HGR graphics mode and renders high
 >
 > - Under ProDOS with `UFONT`, `Ctrl+K` composes **on the Apple II with no serial card or PC**: the driver holds the 2-Bul-Sik automaton (the same rules as the server's, checked against the same cases by `tools/test_onboard_ime.py`), draws the line from `UFONT`, and reads the Hanja candidates from it.
 > - `POKE 16453,1` hands `Ctrl+K` to the PC server over the SSC (kana, Russian, Greek, `Ctrl+P`), `POKE 16453,0` brings it back. Without `UFONT` (the DOS 3.3 floppy `unicode.dsk`) it is always the server.
+> - Limits and notes of each way: [What the Hard Disk Does Alone, and What Needs the Server](#4-what-the-hard-disk-does-alone-and-what-needs-the-server).
 > - **SSC setup**: **AppleWin**: **Configuration (F10) → [Serial] tab**, **Slot 2 Serial Port** set to **`TCP`** (port 1977). **Real Apple II**: a **Super Serial Card** in **Slot 2**, an RS-232 / USB-serial cable to the PC, and `python unicode_server.py --com COMx`.
 
 While typing a BASIC program, press **`Ctrl+K`** and type on the Apple II keyboard. An input line opens on the last HGR row in mixed mode, with the four text lines (and so the BASIC line, once it is near the bottom) below it. As in the Windows IMEs, what is being composed is shown inverse and commits once the next key cannot join it.
@@ -495,6 +496,27 @@ After booting `unicode.hdv`, both drawing and 2-Bul-Sik typing work **with no PC
    - **SSC setup**: **AppleWin**: **Configuration (F10) → [Serial] tab**, **Slot 2 Serial Port** = **`TCP`** (port 1977). **Real hardware**: a **Super Serial Card** in **Slot 2**, a cable to the PC, `python unicode_server.py --com COMx` (`python unicode_server.py` for AppleWin).
 
 ![Onboard Ctrl+J in AppleWin, no server: Hanja candidates for 한 above the input line](docs/images/onboard_hanja.png)
+
+### 4. What the Hard Disk Does Alone, and What Needs the Server
+
+Checked in AppleWin and on the STM32F769I-DISCO //e; not yet on a real Apple II.
+
+| | Hard disk alone (onboard) | Needs the server (SSC) |
+| :--- | :--- | :--- |
+| **Typing** (`Ctrl+K`) | 2-Bul-Sik Hangul, Hanja (`Ctrl+J`), A (as typed) | Japanese kana, Russian, Greek (`Ctrl+L`); PC input and paste (`Ctrl+P`) |
+| **Drawing** (`&`) | The 34,951 glyphs of `UFONT`: Hangul, Hanja (CJK Unified Ideographs), kana, Latin, Greek, Cyrillic, symbols, Hangul jamo | Old Hangul composed into one cell, emoji, Arabic, Hebrew (5b), the finer colour rasteriser |
+| **Terminal mode** (`&` alone) | — | Yes |
+
+**Limits and notes**
+- **Onboard typing needs the ProDOS hard disk.** It composes with `UFONT` (glyphs and Hanja). On the DOS 3.3 floppy `unicode.dsk`, or if `UFONT` does not open (`PEEK(16387)` is 0), `Ctrl+K` always goes to the server.
+- **Hanja a syllable at a time.** No word conversion (한국 → 韓國 is two conversions). Candidates come most common first by Chinese usage counts (the only frequency data in Unihan), so the order can differ from the Windows IME's (한: 限 漢 寒 … 韓).
+- **A line holds up to 80 characters**, or 200 bytes of `\K…\N` hex, whichever comes first; keys past that are ignored. Applesoft's input line itself holds 239 characters.
+- **Shift letters** (ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ) need Caps Lock off. With Caps Lock on, 2-Bul-Sik still works (the driver tells from the letter's case), but every letter counts as unshifted. A II+, with no lower case, cannot type them.
+- **Old Hangul** without the server is drawn a jamo to a cell (ᄊ ㆍ), and cannot be typed onboard.
+- **Not in `UFONT`, left blank**: emoji, Arabic, Hebrew and other scripts it does not cover, and characters outside the BMP (4-byte UTF-8).
+- **Memory**: the driver fills `$4000`–`$5EFF`, and under ProDOS its 1 KB file buffer lowers HIMEM to 37376 (`$9200`). A BASIC program and its variables must stay below `$2000` (HGR page 1) as before.
+- **Colour tags** (`[C:…]`, `/color`) stay in effect for later `&` strings until changed.
+- `POKE 16453,1` hands `Ctrl+K` to the server, `POKE 16453,0` back; `POKE 16387,0` draws `&` strings through the server, `POKE 16387,1` from `UFONT` again.
 
 ---
 
