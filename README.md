@@ -375,7 +375,7 @@ RUN DEMO
 | :--- | :--- | :--- |
 | DOS 3.3 `unicode.dsk` + server | `$6000` cache (characters baked in by `build_font_dsk.py`); `POKE 24576,0` sends everything to the server (any character, old Hangul, colour) | Server |
 | DOS 3.3 `unicode.dsk`, no server | `$6000` cache only | — |
-| ProDOS hard disk, no server | `UFONT`: any of its 42,489 characters | `Ctrl+K` onboard (2-Bul-Sik, Hanja); no terminal mode |
+| ProDOS hard disk, no server | `UFONT`: any of its 89,743 characters | `Ctrl+K` onboard (2-Bul-Sik, Hanja); no terminal mode |
 | ProDOS hard disk + server | `UFONT`; `POKE 16387,0` sends them to the server | `Ctrl+K` onboard; `POKE 16453,1` the server. Terminal mode: server |
 | No disk of fonts, no serial card | `& "/TAPE"` loads a cache through the cassette input ([Cassette Input](#-cassette-input-the-font-cache-without-a-serial-card-or-disk)) | — |
 
@@ -447,7 +447,7 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 
 | `--size` | Glyphs | Disk used |
 | :--- | :--- | :--- |
-| `32M` (65,535 blocks, default) | 42,489: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility and conjoining jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs and the 6,592 of Extension A | 1.4 MB |
+| `32M` (65,535 blocks, default) | 89,743: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility and conjoining jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs, the 6,592 of Extension A, 42,711 of Extension B and 4,543 more from Extensions C to I and the compatibility supplement (all the PC fonts have; outside the BMP as 4-byte UTF-8) | 2.9 MB |
 | `800K` (1,600 blocks) | 13,238: the same without Hanja (spread over 20,992 code points they need about 1,300 blocks) | 477 KB |
 
 `--font` picks the font chain (default `Galmuri14.ttf, NotoSerifCJK16.ttf`).
@@ -512,7 +512,7 @@ Checked in AppleWin and on the STM32F769I-DISCO //e; not yet on a real Apple II.
 | | Hard disk alone (onboard) | Needs the server (SSC) |
 | :--- | :--- | :--- |
 | **Typing** (`Ctrl+K`) | 2-Bul-Sik Hangul, Hanja (`Ctrl+J`), A (as typed) | Japanese kana, Russian, Greek (`Ctrl+L`); PC input and paste (`Ctrl+P`) |
-| **Drawing** (`&`) | The 42,489 glyphs of `UFONT`: Hangul, Hanja (CJK Unified Ideographs and Extension A), kana, Latin, Greek, Cyrillic, symbols, Hangul jamo | Old Hangul composed into one cell, emoji, Arabic, Hebrew (5b), the finer colour rasteriser |
+| **Drawing** (`&`) | The 89,743 glyphs of `UFONT`: Hangul, Hanja (CJK Unified Ideographs, Extensions A to I, 4-byte UTF-8 included), kana, Latin, Greek, Cyrillic, symbols, Hangul jamo | Old Hangul composed into one cell, emoji, Arabic, Hebrew (5b), the finer colour rasteriser |
 | **Terminal mode** (`&` alone) | — | Yes |
 
 **Limits and notes**
@@ -521,7 +521,7 @@ Checked in AppleWin and on the STM32F769I-DISCO //e; not yet on a real Apple II.
 - **A line holds up to 80 characters**, or 200 bytes of `\K…\N` hex, whichever comes first; keys past that are ignored. Applesoft's input line itself holds 239 characters.
 - **Shift letters** (ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ) need Caps Lock off. With Caps Lock on, 2-Bul-Sik still works (the driver tells from the letter's case), but every letter counts as unshifted. A II+, with no lower case, cannot type them.
 - **Old Hangul** without the server is drawn a jamo to a cell (ᄊ ㆍ), and cannot be typed onboard.
-- **Not in `UFONT`, left blank**: emoji, Arabic, Hebrew and other scripts it does not cover, and characters outside the BMP (4-byte UTF-8).
+- **Not in `UFONT`, left blank**: emoji, Arabic, Hebrew and other scripts it does not cover, and the Hanja of Extensions C to I that no font on the building PC has (the server draws from the same PC fonts). `Ctrl+J` lists every Hanja with a Korean reading that `UFONT` has, 57 of them outside the BMP.
 - **Memory**: the driver fills `$4000`–`$5EFF`, and under ProDOS its 1 KB file buffer lowers HIMEM to 37376 (`$9200`). A BASIC program and its variables must stay below `$2000` (HGR page 1) as before.
 - **Colour tags** (`[C:…]`, `/color`) stay in effect for later `&` strings until changed.
 - `POKE 16453,1` hands `Ctrl+K` to the server, `POKE 16453,0` back; `POKE 16387,0` draws `&` strings through the server, `POKE 16387,1` from `UFONT` again.

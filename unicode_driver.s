@@ -336,6 +336,7 @@ OFFLINE_ASCII
     LDA #$00
     STA KEY_1
     STA KEY_2
+    STA KEY_3
     JSR DRAW_CACHED_GLYPH
     JSR ADVANCE_CELL
     JMP OFFLINE_LOOP
@@ -859,11 +860,12 @@ HEX_SP_OK
 
 NOT_HEX_SPACE
     ; The rest of the UTF-8 sequence. 1 byte for ASCII, 2 for Latin, Greek
-    ; and Cyrillic, 3 for Hangul, kana and Hanja. KEY_1 and KEY_2 stay 0
-    ; past its end.
+    ; and Cyrillic, 3 for Hangul, kana and Hanja, 4 outside the BMP (CJK
+    ; Extension B and on). KEY_1 to KEY_3 stay 0 past its end.
     LDA #$00
     STA KEY_1
     STA KEY_2
+    STA KEY_3
     LDA KEY_0
     BPL HEX_DRAW
     JSR HEX_BYTE
@@ -876,8 +878,8 @@ NOT_HEX_SPACE
     LDA KEY_0
     CMP #$F0
     BCC HEX_DRAW
-    JSR HEX_BYTE        ; 4 bytes are outside the BMP, the cell stays as it is
-    JMP HEX_ADVANCE
+    JSR HEX_BYTE
+    STA KEY_3
 
 HEX_DRAW
     ; Draw glyph from cache or font file
@@ -998,6 +1000,10 @@ SEARCH_CACHE_LOOP
     INY
     LDA (CACHE_PTR_LO),Y
     CMP KEY_2
+    BNE NEXT_CACHE_SLOT
+    INY
+    LDA (CACHE_PTR_LO),Y
+    CMP KEY_3
     BEQ FOUND_CACHE_SLOT
 
 NEXT_CACHE_SLOT
@@ -1326,13 +1332,30 @@ HR_MULTI
     JSR CP_APPEND6
     JMP HR_MARK
 HR_THREE
+    CMP #$F0
+    BCS HR_FOUR
     AND #$0F
     JSR CP_START
     LDA KEY_1
     JSR CP_APPEND6
     LDA KEY_2
     JSR CP_APPEND6
+    JMP HR_MARK
+HR_FOUR
+    ; Outside the BMP. CP_PL takes the bits above 16
+    AND #$07
+    JSR CP_START
+    LDA KEY_1
+    JSR CP_APPEND6
+    LDA KEY_2
+    JSR CP_APPEND6
+    LDA KEY_3
+    JSR CP_APPEND6
+    JMP HR_MARK_PL
 HR_MARK
+    LDA #$00
+    STA CP_PL
+HR_MARK_PL
     ; 32 bytes into HD_GLYPH (the onboard input reads other things too)
     LDA #<HD_GLYPH
     STA HD_READ_PARMS+2
@@ -1347,7 +1370,7 @@ HR_MARK
     STA HD_MARK_POS
     LDA CP_HI
     STA HD_MARK_POS+1
-    LDA #$00
+    LDA CP_PL
     STA HD_MARK_POS+2
     LDX #5
 HR_SHIFT
@@ -1376,9 +1399,10 @@ CP_START
     STA CP_LO
     LDA #$00
     STA CP_HI
+    STA CP_PL
     RTS
 
-; CP = CP << 6 | (A & $3F)
+; CP = CP << 6 | (A & $3F), CP_PL above CP_HI
 CP_APPEND6
     AND #$3F
     PHA
@@ -1386,6 +1410,7 @@ CP_APPEND6
 CPA_LOOP
     ASL CP_LO
     ROL CP_HI
+    ROL CP_PL
     DEX
     BNE CPA_LOOP
     PLA
@@ -1453,7 +1478,6 @@ OB_WAIT
     AND #$7F
     JSR OB_KEY
     BCC OB_LOOP
-    JSR HD_CLOSE
     JSR IME_HIDE
     LDA OB_SCOL
     STA CUR_COL
@@ -1463,11 +1487,14 @@ OB_WAIT
     STA CUR_COLOR
     LDA OB_OK
     BNE OB_EMIT
+    JSR HD_CLOSE
     JMP CANCEL_PC_INPUT
 OB_EMIT
+    ; The file stays open for this, a Hanja outside the BMP is looked up
     LDA #$01
     STA OB_WRITE
     JSR OB_ENCODE
+    JSR HD_CLOSE
     JMP RESTORE_REG
 
 ; One key. Carry set when the line is finished (OB_OK 1 Return, 0 Esc).
@@ -2027,6 +2054,54 @@ OBE_MULTI
     LDA #'K'
     JSR OBE_PUT
 OBE_UTF8
+    ; U+E000-F7FF stand in for Hanja outside the BMP (the Ctrl+J lists hold
+    ; 16-bit code points), the real one at $1F0000 + (cp - $E000) * 4
+    LDA CP_HI
+    CMP #$E0
+    BCC OBE_BMP
+    CMP #$F8
+    BCS OBE_BMP
+    LDX #$E0
+    LDY #$1F
+    JSR READ4_AT
+    BCS OBE_RET
+    ; F0 | plane >> 2
+    LDA CAND_HDR+2
+    LSR
+    LSR
+    ORA #$F0
+    JSR OBE_HEX
+    ; 80 | (plane & 3) << 4 | hi >> 4
+    LDA CAND_HDR+2
+    AND #$03
+    ASL
+    ASL
+    ASL
+    ASL
+    STA OB_T
+    LDA CAND_HDR+1
+    LSR
+    LSR
+    LSR
+    LSR
+    ORA OB_T
+    ORA #$80
+    JSR OBE_HEX
+    ; 80 | (hi & F) << 2 | lo >> 6
+    LDA CAND_HDR+1
+    AND #$0F
+    STA OB_T
+    LDA CAND_HDR
+    STA CP_LO
+    ASL
+    ROL OB_T
+    ASL
+    ROL OB_T
+    LDA OB_T
+    ORA #$80
+    JSR OBE_HEX
+    JMP OBE_LAST
+OBE_BMP
     ; OB_T = code point >> 6
     LDA CP_HI
     STA OB_T
@@ -2360,33 +2435,9 @@ OH_LAST
     STA CAND_SRC
 OH_LOOKUP
     ; $1B0000 + (code point - $AC00) * 4
-    LDA CP_LO
-    STA HD_MARK_POS
-    LDA CP_HI
-    SEC
-    SBC #$AC
-    STA HD_MARK_POS+1
-    LDA #0
-    STA HD_MARK_POS+2
-    ASL HD_MARK_POS
-    ROL HD_MARK_POS+1
-    ROL HD_MARK_POS+2
-    ASL HD_MARK_POS
-    ROL HD_MARK_POS+1
-    ROL HD_MARK_POS+2
-    LDA HD_MARK_POS+2
-    CLC
-    ADC #$1B
-    STA HD_MARK_POS+2
-    LDA #<CAND_HDR
-    STA HD_READ_PARMS+2
-    LDA #>CAND_HDR
-    STA HD_READ_PARMS+3
-    LDA #4
-    STA HD_READ_PARMS+4
-    LDA #0
-    STA HD_READ_PARMS+5
-    JSR HR_SEEK
+    LDX #$AC
+    LDY #$1B
+    JSR READ4_AT
     BCS OH_RET
     LDA CAND_HDR+2
     BEQ OH_RET
@@ -2403,6 +2454,39 @@ OH_LOOKUP
     STA CAND_ON
 OH_RET
     RTS
+
+; The 4 bytes at Y * $10000 + (CP - X * $100) * 4 into CAND_HDR,
+; a table entry for the code point. Carry set if they cannot be read.
+READ4_AT
+    STX HD_MARK_POS+2
+    LDA CP_HI
+    SEC
+    SBC HD_MARK_POS+2
+    STA HD_MARK_POS+1
+    LDA CP_LO
+    STA HD_MARK_POS
+    LDA #0
+    STA HD_MARK_POS+2
+    LDX #2
+R4_SHIFT
+    ASL HD_MARK_POS
+    ROL HD_MARK_POS+1
+    ROL HD_MARK_POS+2
+    DEX
+    BNE R4_SHIFT
+    TYA
+    CLC
+    ADC HD_MARK_POS+2
+    STA HD_MARK_POS+2
+    LDA #<CAND_HDR
+    STA HD_READ_PARMS+2
+    LDA #>CAND_HDR
+    STA HD_READ_PARMS+3
+    LDA #4
+    STA HD_READ_PARMS+4
+    LDA #0
+    STA HD_READ_PARMS+5
+    JMP HR_SEEK
 
 ; The page from CAND_FIRST into CAND_CP (CAND_N of them)
 CAND_LOAD
@@ -3179,6 +3263,8 @@ HD_ON       .byte 0             ; draw from the font file (this & statement)
 HD_REF      .byte 0             ; its ProDOS reference number, 0 = closed
 CP_LO       .byte 0
 CP_HI       .byte 0
+CP_PL       .byte 0             ; bits 16-20, for a glyph outside the BMP
+KEY_3       .byte 0             ; 4th UTF-8 byte (0 for shorter ones)
 HD_PFX_PARMS    .byte 1
                 .word HD_FPATH
 HD_ONLINE_PARMS .byte 2, 0

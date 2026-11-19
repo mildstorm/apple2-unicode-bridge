@@ -131,7 +131,14 @@ def main():
                     "Stop-Process -Name AppleWin -Force -ErrorAction SilentlyContinue"],
                    capture_output=True)
     time.sleep(0.5)
-    aw = subprocess.Popen([APPLEWIN_EXE, "-d1", DSK_PATH], cwd=os.path.dirname(APPLEWIN_EXE))
+    # Slot 7 empty, so a hard disk left there (AppleWin keeps slot settings
+    # given on its command line) does not boot instead of the floppy; the
+    # settings are put back afterwards
+    from test_hdd_live import REG_KEY
+    saved = os.path.join(tempfile.gettempdir(), "applewin_settings_ime.reg")
+    subprocess.run(["reg", "export", REG_KEY, saved, "/y"], capture_output=True, check=True)
+    aw = subprocess.Popen([APPLEWIN_EXE, "-s7", "empty", "-d1", DSK_PATH],
+                          cwd=os.path.dirname(APPLEWIN_EXE))
     log_path = os.path.join(tempfile.gettempdir(), "ime_live_server.log")
     print(f"  * server log: {log_path}")
     log = open(log_path, "w", encoding="utf-8")
@@ -232,7 +239,12 @@ def main():
     finally:
         srv.terminate()
         aw.terminate()
+        aw.wait(10)
         log.close()
+        time.sleep(1.0)
+        subprocess.run(["reg", "delete", REG_KEY, "/f"], capture_output=True)
+        subprocess.run(["reg", "import", saved], capture_output=True, check=True)
+        print("  * AppleWin settings restored")
 
 
 if __name__ == "__main__":

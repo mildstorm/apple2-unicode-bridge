@@ -11,10 +11,12 @@ The image (ProDOS block order, .hdv / .po) holds:
   STARTUP               loads the driver and says whether the font was found
   UNICODE               the driver (UNICODE.BIN, $4000)
   UFONT                 the 14x16 glyph of each code point at code point * 32,
-                        a sparse 2 MB file: only blocks with glyphs take disk
+                        a sparse 6.3 MB file (to U+323AF, CJK Extension H):
+                        only blocks with glyphs take disk
   HDDEMO, JEMANG        demo programs
 
-32M (65535 blocks) holds Hangul, Hanja (CJK Unified Ideographs and Extension A), kana,
+32M (65535 blocks) holds Hangul, Hanja (CJK Unified Ideographs, Extensions
+A to I as far as the fonts have them, compatibility ideographs), kana,
 Latin, Greek, Cyrillic and symbols. 800K leaves the Hanja out: spread over
 20,992 code points they need about 1,300 blocks of the 1,600.
 
@@ -34,7 +36,7 @@ sys.path.insert(0, ROOT)
 from prodos_image import TYPE_BAS, TYPE_BIN, TYPE_SYS, Volume, read_volume, tokenize  # noqa: E402
 
 GLYPH = 32
-FONT_EOF = 0x10000 * GLYPH          # every BMP code point
+FONT_EOF = 0x323B0 * GLYPH          # to the end of CJK Extension H
 
 RANGES = [
     (0x0020, 0x007E, "ASCII"),
@@ -59,8 +61,13 @@ RANGES = [
     (0xAC00, 0xD7A3, "Hangul syllables"),
     (0xF900, 0xFAFF, "CJK compatibility ideographs"),
     (0xFF00, 0xFFEF, "fullwidth forms"),
+    # Outside the BMP: 4-byte UTF-8, drawn from code point * 32 as well
+    (0x20000, 0x2A6DF, "CJK Extension B"),
+    (0x2A700, 0x2EE5F, "CJK Extensions C, D, E, F, I"),
+    (0x2F800, 0x2FA1F, "CJK compatibility supplement"),
+    (0x30000, 0x323AF, "CJK Extensions G, H"),
 ]
-HANJA_RANGES = {0x3400, 0x4E00, 0xF900}
+HANJA_RANGES = {0x3400, 0x4E00, 0xF900, 0x20000, 0x2A700, 0x2F800, 0x30000}
 
 STARTUP = """
 10 D$ = CHR$ (4)
@@ -112,15 +119,41 @@ def demo_program():
 HANJA_INDEX = 0xD800 * GLYPH          # $1B0000
 HANJA_DATA = HANJA_INDEX + 0xB000     # $1BB000
 HANJA_END = 0xE000 * GLYPH
+# The lists hold 16-bit code points, so a Hanja outside the BMP (CJK
+# Extension B on) is listed as a stand-in from U+E000 (private use, no glyphs
+# of its own): its glyph is copied to the stand-in, and the real code point
+# is at STANDIN_MAP + (stand-in - U+E000) * 4 (3 bytes, low first), where
+# the driver looks it up as it types the line into BASIC.
+STANDIN_FIRST, STANDIN_END = 0xE000, 0xF800
+STANDIN_MAP = 0x1F0000                # = U+F800 * 32
 
 
 def add_hanja(font):
+    def has_glyph(cp):
+        return any(font[cp * GLYPH:(cp + 1) * GLYPH])
+
+    standins = {}
+
+    def listed(c):
+        cp = ord(c)
+        if cp <= 0xFFFF:
+            return cp
+        if cp not in standins:
+            s = STANDIN_FIRST + len(standins)
+            assert s < STANDIN_END, "too many Hanja outside the BMP"
+            standins[cp] = s
+            font[s * GLYPH:(s + 1) * GLYPH] = font[cp * GLYPH:(cp + 1) * GLYPH]
+            m = STANDIN_MAP + (s - STANDIN_FIRST) * 4
+            font[m:m + 4] = cp.to_bytes(3, "little") + b"\0"
+        return standins[cp]
+
     table = {}
     with open(os.path.join(ROOT, "hanja_table.txt"), encoding="utf-8") as f:
         for line in f:
             if not line.startswith("#") and "\t" in line:
                 reading, cands = line.rstrip("\n").split("\t", 1)
-                table[reading] = [c for c in cands if ord(c) <= 0xFFFF][:255]
+                # Only those UFONT can draw (an 800K image has no Hanja)
+                table[reading] = [c for c in cands if has_glyph(ord(c))][:255]
     data = bytearray()
     for s in range(11172):
         cands = table.get(chr(0xAC00 + s), [])
@@ -130,10 +163,10 @@ def add_hanja(font):
         font[HANJA_INDEX + s * 4:HANJA_INDEX + s * 4 + 4] = bytes(
             [start & 0xFF, start >> 8, len(cands), 0])
         for c in cands:
-            data += ord(c).to_bytes(2, "little")
+            data += listed(c).to_bytes(2, "little")
     assert HANJA_DATA + len(data) <= HANJA_END, "Hanja lists do not fit"
     font[HANJA_DATA:HANJA_DATA + len(data)] = data
-    return len(data) // 2
+    return len(data) // 2, len(standins)
 
 
 def build_font(font, ranges):
@@ -180,7 +213,8 @@ def main():
     ranges = [r for r in RANGES if args.size == "32M" or r[0] not in HANJA_RANGES]
     print(f"[1/3] Rasterising glyphs with {args.font}")
     font, count = build_font(args.font, ranges)
-    print(f"  Hanja for Ctrl+J: {add_hanja(font)} candidates")
+    listed, outside = add_hanja(font)
+    print(f"  Hanja for Ctrl+J: {listed} candidates, {outside} of them outside the BMP")
 
     print("[2/3] Writing the volume")
     vol = Volume(blocks, args.volume, boot)

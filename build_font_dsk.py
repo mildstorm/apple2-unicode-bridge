@@ -193,8 +193,7 @@ def build_font_table(chars, rasterizer, char_font_map=None):
     Offset 2: Count N (1 byte, max 255)
     Offset 3: $00 (Reserved)
     Offset 4..: N * 36 bytes:
-        [Byte 0..2]: UTF-8 3-byte encoding of character
-        [Byte 3]:    $00 (Padding)
+        [Byte 0..3]: UTF-8 encoding of the character, $00 past its end
         [Byte 4..35]: 32 bytes 14x16 bitmap glyph
     """
     if len(chars) > 255:
@@ -229,9 +228,9 @@ def build_font_table(chars, rasterizer, char_font_map=None):
 
     for ch in chars:
         utf8_bytes = ch.encode('utf-8')
-        # Ensure 3 bytes
-        key = bytearray(3)
-        for i in range(min(3, len(utf8_bytes))):
+        # The UTF-8 bytes, 0 past the end (4 for a character outside the BMP)
+        key = bytearray(4)
+        for i in range(min(4, len(utf8_bytes))):
             key[i] = utf8_bytes[i]
         
         target_r = None
@@ -248,7 +247,6 @@ def build_font_table(chars, rasterizer, char_font_map=None):
             glyph_bytes = glyph_bytes.ljust(32, b'\x00')[:32]
 
         buf.extend(key)
-        buf.append(0x00) # Padding
         buf.extend(glyph_bytes)
 
     return bytes(buf)
