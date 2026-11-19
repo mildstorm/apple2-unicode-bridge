@@ -44,6 +44,81 @@ def type_text(hwnd, text):
         post_char(hwnd, ord(ch))
 
 
+def _grab(hwnd):
+    """The window as it is on screen, copied with BitBlt. PrintWindow
+    (capture_hwnd) makes AppleWin repaint the whole window, and polled a
+    few times a second that flashes the screen."""
+    import ctypes
+    import struct
+    from ctypes import wintypes
+    from PIL import Image
+    gdi32 = ctypes.windll.gdi32
+    rect = wintypes.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+    w, h = max(1, rect.right - rect.left), max(1, rect.bottom - rect.top)
+    hwnd_dc = user32.GetWindowDC(hwnd)
+    mem_dc = gdi32.CreateCompatibleDC(hwnd_dc)
+    bitmap = gdi32.CreateCompatibleBitmap(hwnd_dc, w, h)
+    gdi32.SelectObject(mem_dc, bitmap)
+    gdi32.BitBlt(mem_dc, 0, 0, w, h, hwnd_dc, 0, 0, 0x00CC0020)   # SRCCOPY
+    bmi = bytearray(40)
+    struct.pack_into("<lllHHllllll", bmi, 0, 40, w, -h, 1, 32, 0, 0, 0, 0, 0, 0)
+    buf = bytearray(w * h * 4)
+    gdi32.GetDIBits(mem_dc, bitmap, 0, h, (ctypes.c_char * len(buf)).from_buffer(buf),
+                    (ctypes.c_char * 40).from_buffer(bmi), 0)
+    gdi32.DeleteObject(bitmap)
+    gdi32.DeleteDC(mem_dc)
+    user32.ReleaseDC(hwnd, hwnd_dc)
+    return Image.frombuffer("RGBA", (w, h), bytes(buf), "raw", "BGRA", 0, 1)
+
+
+def _screen(hwnd):
+    img = _grab(hwnd).convert("L")
+    w, h = img.size
+    # The Apple II screen, without the title bar, frame and button bar
+    return img.crop((10, 33, w - 56, h - 9)).point(lambda v: 255 if v > 40 else 0)
+
+
+def wait_ready(hwnd, timeout=45.0, settle=1.5):
+    """Waits until the Apple II is idle at a prompt: the screen shows
+    something and has not changed for `settle` seconds, apart from the
+    blinking cursor (one cell), and the cursor has blinked: a screen that
+    is merely still may be a disk loading (with no cursor in sight, as on a
+    full HGR screen, five still seconds will do). Keys posted while it is busy
+    (booting, loading a file, drawing) are lost but the last: the keyboard
+    holds one key, so POKE typed during HELLO's BLOAD arrives as E and
+    BASIC answers ?SYNTAX ERROR."""
+    from PIL import ImageChops
+    cursor_cell = 28 * 32 + 200
+    start = time.time()
+    last = None
+    still_since = None
+    blinked = False
+    while time.time() - start < timeout:
+        cur = _screen(hwnd)
+        if last is not None:
+            changed = ImageChops.difference(cur, last).histogram()[255]
+            if changed <= cursor_cell:
+                still_since = still_since or time.time()
+                blinked = blinked or changed > 0
+                # A full HGR screen shows no cursor: then a longer stillness
+                quiet = time.time() - still_since
+                if (blinked and quiet >= settle) or quiet >= settle + 3.5:
+                    return
+            else:
+                still_since = None
+                blinked = False
+        last = cur
+        time.sleep(0.25)
+    raise TimeoutError("the Apple II did not come back to a prompt")
+
+
+def type_command(hwnd, text):
+    """A BASIC command or line, typed once the Apple II is idle."""
+    wait_ready(hwnd)
+    type_text(hwnd, text)
+
+
 def shot(hwnd, name):
     path = os.path.join(OUT_DIR, f"ime_{name}.png")
     capture_hwnd(hwnd).save(path)
@@ -65,14 +140,13 @@ def main():
                            stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                            cwd=ROOT_DIR, env=env)
     try:
-        time.sleep(6.0)
+        time.sleep(3.0)
         hwnds = find_applewin_hwnd()
         assert hwnds, "AppleWin window not found"
         hwnd = hwnds[0][0]
 
-        type_text(hwnd, "POKE 24576,0\r")
-        time.sleep(0.5)
-        type_text(hwnd, '10 & "')
+        type_command(hwnd, "POKE 24576,0\r")   # the cache off: & goes to the server
+        type_command(hwnd, '10 & "')
         post_char(hwnd, 0x0B)                    # Ctrl+K
         time.sleep(1.0)
         type_text(hwnd, "dkssudgktpdy dovmf2 rhk")  # 안녕하세요 애플2 과
@@ -89,17 +163,17 @@ def main():
         post_char(hwnd, 0x0D)                    # Return: into the BASIC line
         time.sleep(1.0)
         shot(hwnd, "injected")
-        type_text(hwnd, '"\r')
+        type_command(hwnd, '"\r')
         time.sleep(0.5)
-        type_text(hwnd, "LIST\r")
+        type_command(hwnd, "LIST\r")
         time.sleep(1.0)
         shot(hwnd, "list")
-        type_text(hwnd, "RUN\r")
+        type_command(hwnd, "RUN\r")
         time.sleep(3.0)
         shot(hwnd, "run")
 
         # A line longer than the 19 cells pages along; ESC then cancels it
-        type_text(hwnd, '20 & "')
+        type_command(hwnd, '20 & "')
         post_char(hwnd, 0x0B)
         time.sleep(1.0)
         post_char(hwnd, 0x0B)                    # back to 한 (the mode is kept)
@@ -110,14 +184,14 @@ def main():
         shot(hwnd, "paging")
         post_char(hwnd, 0x1B)
         time.sleep(1.0)
-        type_text(hwnd, 'X"\r')
+        type_command(hwnd, 'X"\r')
         time.sleep(0.5)
-        type_text(hwnd, "LIST 20\r")
+        type_command(hwnd, "LIST 20\r")
         time.sleep(1.0)
         shot(hwnd, "cancel")
 
         # Hanja candidates, then kana, Russian and Greek on one line
-        type_text(hwnd, '30 & "')
+        type_command(hwnd, '30 & "')
         post_char(hwnd, 0x0B)
         time.sleep(1.0)
         type_text(hwnd, "gks")
@@ -144,11 +218,16 @@ def main():
         shot(hwnd, "multi")
         post_char(hwnd, 0x0D)
         time.sleep(1.0)
-        type_text(hwnd, '"\r')
+        type_command(hwnd, '"\r')
         time.sleep(0.5)
-        type_text(hwnd, "RUN\r")
+        type_command(hwnd, "RUN\r")
         time.sleep(4.0)
         shot(hwnd, "multi_run")
+        wait_ready(hwnd)
+        log.flush()
+        drawn = [l for l in open(log_path, encoding="utf-8") if "BASIC &" in l]
+        # POKE 24576,0 took: the RUNs went to the server, not the $6000 cache
+        assert len(drawn) >= 3, f"the server drew {len(drawn)} & strings, not 3 (did a command lose its keys?)"
         print("[done] check the screenshots and the server log")
     finally:
         srv.terminate()

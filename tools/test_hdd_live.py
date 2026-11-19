@@ -20,7 +20,7 @@ ROOT_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
 from test_applewin_live import APPLEWIN_EXE, capture_hwnd, find_applewin_hwnd  # noqa: E402
-from test_ime_live import type_text  # noqa: E402
+from test_ime_live import type_command, wait_ready  # noqa: E402
 
 REG_KEY = r"HKCU\Software\AppleWin"
 
@@ -35,12 +35,13 @@ def run_demos():
     hwnds = find_applewin_hwnd()
     assert hwnds, "AppleWin window not found"
     hwnd = hwnds[0][0]
+    wait_ready(hwnd)
     shot(hwnd, "startup")
-    type_text(hwnd, "RUN HDDEMO\r")
-    time.sleep(4.0)
+    type_command(hwnd, "RUN HDDEMO\r")
+    wait_ready(hwnd)
     shot(hwnd, "demo")
-    type_text(hwnd, "RUN JEMANG\r")
-    time.sleep(4.0)
+    type_command(hwnd, "RUN JEMANG\r")
+    wait_ready(hwnd)
     shot(hwnd, "jemang")
 
 
@@ -55,7 +56,7 @@ def main():
     aw = subprocess.Popen([APPLEWIN_EXE, "-s7", "hdc", "-h1", os.path.abspath(image)],
                           cwd=os.path.dirname(APPLEWIN_EXE))
     try:
-        time.sleep(7.0)
+        time.sleep(3.0)
         run_demos()
     finally:
         aw.terminate()

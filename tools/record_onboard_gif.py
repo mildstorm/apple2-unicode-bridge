@@ -23,7 +23,7 @@ ROOT_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
 from test_applewin_live import APPLEWIN_EXE, capture_hwnd, find_applewin_hwnd  # noqa: E402
-from test_ime_live import post_char, type_text  # noqa: E402
+from test_ime_live import post_char, type_command, type_text, wait_ready  # noqa: E402
 
 REG_KEY = r"HKCU\Software\AppleWin"
 OUT_DIR = os.path.join(ROOT_DIR, "docs", "images")
@@ -75,9 +75,9 @@ def letters(rec, keys, captions):
 def record(hwnd):
     rec = Recorder(hwnd)
     # --- Hangul: 안녕하세요, a jamo at a time ---
-    type_text(hwnd, "NEW\r")
-    type_text(hwnd, "HOME\r")
-    type_text(hwnd, '10 & "')
+    type_command(hwnd, "NEW\r")
+    type_command(hwnd, "HOME\r")
+    type_command(hwnd, '10 & "')
     time.sleep(0.5)
     rec.shot('BASIC 줄 10 & "  (서버·시리얼 카드 없음, HDD 부팅)', 1400)
     rec.key(CTRL_K, "Ctrl+K: 입력 줄. 맨 앞 [한]은 입력 모드, │ 뒤가 입력한 글자", 2200, wait=0.8)
@@ -89,18 +89,18 @@ def record(hwnd):
     rec.key(0x08, "← (백스페이스): 자모 하나 지움 → 안녕하세ㅇ", 1100)
     rec.key(ord("y"), "y → 안녕하세요", 900)
     rec.key(RETURN, "Return: BASIC 줄에 16진수 문자열로 들어감", 1600, wait=0.8)
-    type_text(hwnd, '"\r')
-    type_text(hwnd, "RUN\r")
+    type_command(hwnd, '"\r')
+    type_command(hwnd, "RUN\r")
     time.sleep(2.5)
     rec.shot("RUN: 하드디스크의 UFONT로 그림 (서버 없음)", 3000)
     rec.save("onboard_hangul.gif")
 
     # --- Hanja: 한국 → 韓國 ---
-    type_text(hwnd, "NEW\r")
-    type_text(hwnd, '& "/CLEAR"\r')     # the first recording off the HGR screen
-    type_text(hwnd, "TEXT\r")
-    type_text(hwnd, "HOME\r")
-    type_text(hwnd, '10 & "')
+    type_command(hwnd, "NEW\r")
+    type_command(hwnd, '& "/CLEAR"\r')     # the first recording off the HGR screen
+    type_command(hwnd, "TEXT\r")
+    type_command(hwnd, "HOME\r")
+    type_command(hwnd, '10 & "')
     time.sleep(0.5)
     rec.shot('BASIC 줄 10 & "', 1200)
     rec.key(CTRL_K, "Ctrl+K: 입력 줄. 맨 앞 [한]은 입력 모드, │ 뒤가 입력한 글자", 2200, wait=0.8)
@@ -116,8 +116,8 @@ def record(hwnd):
         done += hanja
         rec.key(ord(pick), f"{pick} → {done}", 1200)
     rec.key(RETURN, "Return: BASIC 줄에 16진수 문자열로 들어감", 1600, wait=0.8)
-    type_text(hwnd, '"\r')
-    type_text(hwnd, "RUN\r")
+    type_command(hwnd, '"\r')
+    type_command(hwnd, "RUN\r")
     time.sleep(2.5)
     rec.shot("RUN: 大韓民國 (하드디스크의 UFONT로, 서버 없음)", 3000)
     rec.save("onboard_hanja.gif")
@@ -134,7 +134,7 @@ def main():
     aw = subprocess.Popen([APPLEWIN_EXE, "-s7", "hdc", "-h1", image],
                           cwd=os.path.dirname(APPLEWIN_EXE))
     try:
-        time.sleep(8.0)
+        time.sleep(3.0)
         hwnds = find_applewin_hwnd()
         assert hwnds, "AppleWin window not found"
         record(hwnds[0][0])
