@@ -1177,30 +1177,71 @@ NOT_LOWER
     ORA #$80
     RTS
 
+; --- Ctrl+K - 2-Bul-Sik input line ---
+; Every key goes to the server as typed (no upper-casing). The server composes
+; the text and draws the line on HGR row 9 (Hanja candidates on row 8) with
+; $81 packets. Row 9 is the last row shown in mixed mode, so the four text
+; lines stay in view. Rows 8-9 are saved on the first packet and put back
+; when the server ends the input with $86, a length and the bytes, which
+; are then typed into GETLN. ESC goes to the server, which closes the
+; candidates or cancels. A second ESC with no answer in between leaves
+; without waiting for the server.
 HANDLE_CTRL_K
     STX SAVE_X
     STY SAVE_Y
+    LDA DRAW_MODE
+    STA IME_OLDMODE
+    LDA #$00
+    STA IME_SHOWN
+    STA IME_ESCS
     LDA #$0B
     JSR SEND_BYTE
 
-WAIT_FOR_PC_INPUT
+IME_LOOP
     LDA ACIA_STAT
     AND #$08
-    BNE READ_INPUT_CMD
+    BNE IME_RX
 
     LDA KBD
-    BPL WAIT_FOR_PC_INPUT
+    BPL IME_LOOP
     STA KBDSTRB
     AND #$7F
     CMP #$1B
-    BEQ CANCEL_PC_INPUT
-    JMP WAIT_FOR_PC_INPUT
+    BNE IME_SEND_KEY
+    LDX IME_ESCS
+    BNE CANCEL_PC_INPUT
+    INC IME_ESCS
+IME_SEND_KEY
+    JSR SEND_BYTE
+    JMP IME_LOOP
+
+IME_RX
+    LDX #$00
+    STX IME_ESCS        ; the server answered, so ESC goes to it again
+    LDA ACIA_DATA
+    CMP #$81
+    BEQ IME_DRAW
+    CMP #$88
+    BEQ IME_SET_MODE
+    CMP #$86
+    BEQ READ_INPUT_CMD
+    JMP IME_LOOP
+
+IME_DRAW
+    LDA IME_SHOWN
+    BNE IME_DRAW_GO
+    JSR IME_SHOW
+IME_DRAW_GO
+    JSR DRAW_ONE_GLYPH
+    JMP IME_LOOP
+
+IME_SET_MODE
+    JSR RECV_BYTE
+    STA DRAW_MODE
+    JMP IME_LOOP
 
 READ_INPUT_CMD
-    LDA ACIA_DATA
-    CMP #$86
-    BNE WAIT_FOR_PC_INPUT
-
+    JSR IME_HIDE
     JSR RECV_BYTE
     STA SAVE_CNT
     BEQ RESTORE_REG
@@ -1219,9 +1260,87 @@ RESTORE_REG
     JMP MY_KEYIN
 
 CANCEL_PC_INPUT
+    JSR IME_HIDE
     LDX SAVE_X
     LDY SAVE_Y
     JMP READ_KBD
+
+; Save HGR lines 128-159 (rows 8-9) to IME_SAVE, blank them, show mixed HGR.
+IME_SHOW
+    LDA #128
+    STA IME_LINE
+    LDA #<IME_SAVE
+    STA SRC_LO
+    LDA #>IME_SAVE
+    STA SRC_HI
+IME_SHOW_LINE
+    LDY IME_LINE
+    LDA HGR_LO,Y
+    STA PTR_LO
+    LDA HGR_HI,Y
+    STA PTR_HI
+    LDY #39
+IME_SHOW_BYTE
+    LDA (PTR_LO),Y
+    STA (SRC_LO),Y
+    LDA #$00
+    STA (PTR_LO),Y
+    DEY
+    BPL IME_SHOW_BYTE
+    JSR IME_NEXT_LINE
+    BNE IME_SHOW_LINE
+    STA TXTCLR
+    STA HIRES
+    STA PAGE1
+    STA MIXSET
+    INC IME_SHOWN
+    RTS
+
+; Put lines 128-159 back, return to text and restore the draw mode.
+IME_HIDE
+    LDA IME_SHOWN
+    BEQ IME_HIDE_MODE
+    LDA #128
+    STA IME_LINE
+    LDA #<IME_SAVE
+    STA SRC_LO
+    LDA #>IME_SAVE
+    STA SRC_HI
+IME_HIDE_LINE
+    LDY IME_LINE
+    LDA HGR_LO,Y
+    STA PTR_LO
+    LDA HGR_HI,Y
+    STA PTR_HI
+    LDY #39
+IME_HIDE_BYTE
+    LDA (SRC_LO),Y
+    STA (PTR_LO),Y
+    DEY
+    BPL IME_HIDE_BYTE
+    JSR IME_NEXT_LINE
+    BNE IME_HIDE_LINE
+    STA TXTSET
+    LDA #$00
+    STA IME_SHOWN
+IME_HIDE_MODE
+    LDA IME_OLDMODE
+    STA DRAW_MODE
+    RTS
+
+; Advance SRC by 40 bytes and IME_LINE by one; Z set after line 159.
+IME_NEXT_LINE
+    CLC
+    LDA SRC_LO
+    ADC #40
+    STA SRC_LO
+    BCC IME_NL_NC
+    INC SRC_HI
+IME_NL_NC
+    INC IME_LINE
+    LDA IME_LINE
+    CMP #160
+    RTS
 
 RUN_TERMINAL_MODE
     STA TXTCLR
@@ -1533,6 +1652,11 @@ COLOR_MASK_0 .byte $00, $2A, $55, $7F, $00, $2A, $55, $7F
 COLOR_MASK_1 .byte $00, $55, $2A, $7F, $00, $55, $2A, $7F
 COLOR_HB     .byte $00, $00, $00, $00, $80, $80, $80, $80
 BUF_START  .dsb 256, 0
+IME_SHOWN   .byte 0
+IME_ESCS    .byte 0
+IME_OLDMODE .byte 0
+IME_LINE    .byte 0
+IME_SAVE    .dsb 1280, 0
 
 HGR_LO
 .byte $00, $00, $00, $00, $00, $00, $00, $00, $80, $80, $80, $80, $80, $80, $80, $80

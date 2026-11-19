@@ -33,6 +33,8 @@ except ImportError:
 
 from PIL import Image, ImageDraw, ImageFont
 
+import apple_ime
+
 if getattr(sys, 'frozen', False):
     SCRIPT_DIR = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
     EXE_DIR = os.path.dirname(sys.executable)
@@ -107,50 +109,33 @@ HANJA_VARIANTS = {
     0x5B9E: 0x5BE6,  # 実 -> 實 (열매 실)
 }
 
-# 2-Bul-Sik Korean Key Mapping
-KEY_TO_CHO = {
-    'r': 0, 'R': 1, 's': 2, 'e': 3, 'E': 4, 'f': 5, 'a': 6, 'q': 7,
-    'Q': 8, 't': 9, 'T': 10, 'd': 11, 'w': 12, 'W': 13, 'c': 14,
-    'z': 15, 'x': 16, 'v': 17, 'g': 18
-}
-
-KEY_TO_JUNG = {
-    'k': 0, 'o': 1, 'i': 2, 'O': 3, 'j': 4, 'p': 5, 'u': 6, 'P': 7,
-    'h': 8, 'y': 12, 'n': 13, 'b': 17, 'm': 18, 'l': 20
-}
-
-COMPOSITE_JUNG = {
-    (8, 0): 9,   # ㅗ + ㅏ = ㅘ
-    (8, 1): 10,  # ㅗ + ㅐ = ㅙ
-    (8, 20): 11, # ㅗ + ㅣ = ㅚ
-    (13, 4): 14, # ㅜ + ㅓ = ㅝ
-    (13, 5): 15, # ㅜ + ㅔ = ㅞ
-    (13, 20): 16,# ㅜ + ㅣ = ㅟ
-    (18, 20): 19 # ㅡ + ㅣ = ㅢ
-}
-
-KEY_TO_JONG = {
-    'r': 1, 'R': 2, 's': 4, 'e': 7, 'f': 8, 'a': 16, 'q': 17,
-    't': 19, 'T': 20, 'd': 21, 'w': 22, 'c': 23, 'z': 24, 'x': 25,
-    'v': 26, 'g': 27
-}
-
-COMPOSITE_JONG = {
-    (1, 19): 3,   # ㄱ + ㅅ = ㄳ
-    (4, 22): 5,   # ㄴ + ㅈ = ㄵ
-    (4, 27): 6,   # ㄴ + ㅎ = ㄶ
-    (8, 1): 9,    # ㄹ + ㄱ = ㄺ
-    (8, 16): 10,  # ㄹ + ㅁ = ㄻ
-    (8, 17): 11,  # ㄹ + ㅂ = ㄼ
-    (8, 19): 12,  # ㄹ + ㅅ = ㄽ
-    (8, 25): 13,  # ㄹ + ㅌ = ㄾ
-    (8, 26): 14,  # ㄹ + ㅍ = ㄿ
-    (8, 27): 15,  # ㄹ + ㅎ = ㅀ
-    (17, 19): 18  # ㅂ + ㅅ = ㅄ
+# 2-Bul-Sik (KS X 5002) key layout. Shift gives the five tense consonants
+# and ㅒ ㅖ; on every other key Shift types the same jamo, as in Windows.
+DUBEOL_KEYS = {
+    'q': 'ㅂ', 'w': 'ㅈ', 'e': 'ㄷ', 'r': 'ㄱ', 't': 'ㅅ',
+    'y': 'ㅛ', 'u': 'ㅕ', 'i': 'ㅑ', 'o': 'ㅐ', 'p': 'ㅔ',
+    'a': 'ㅁ', 's': 'ㄴ', 'd': 'ㅇ', 'f': 'ㄹ', 'g': 'ㅎ',
+    'h': 'ㅗ', 'j': 'ㅓ', 'k': 'ㅏ', 'l': 'ㅣ',
+    'z': 'ㅋ', 'x': 'ㅌ', 'c': 'ㅊ', 'v': 'ㅍ', 'b': 'ㅠ', 'n': 'ㅜ', 'm': 'ㅡ',
+    'Q': 'ㅃ', 'W': 'ㅉ', 'E': 'ㄸ', 'R': 'ㄲ', 'T': 'ㅆ', 'O': 'ㅒ', 'P': 'ㅖ',
 }
 
 CHO_LIST = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ']
 JUNG_LIST = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ']
+JONG_LIST = ['', 'ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ',
+             'ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ']
+
+VOWEL_PAIRS = {
+    ('ㅗ', 'ㅏ'): 'ㅘ', ('ㅗ', 'ㅐ'): 'ㅙ', ('ㅗ', 'ㅣ'): 'ㅚ',
+    ('ㅜ', 'ㅓ'): 'ㅝ', ('ㅜ', 'ㅔ'): 'ㅞ', ('ㅜ', 'ㅣ'): 'ㅟ',
+    ('ㅡ', 'ㅣ'): 'ㅢ',
+}
+
+CONSONANT_PAIRS = {
+    ('ㄱ', 'ㅅ'): 'ㄳ', ('ㄴ', 'ㅈ'): 'ㄵ', ('ㄴ', 'ㅎ'): 'ㄶ',
+    ('ㄹ', 'ㄱ'): 'ㄺ', ('ㄹ', 'ㅁ'): 'ㄻ', ('ㄹ', 'ㅂ'): 'ㄼ', ('ㄹ', 'ㅅ'): 'ㄽ',
+    ('ㄹ', 'ㅌ'): 'ㄾ', ('ㄹ', 'ㅍ'): 'ㄿ', ('ㄹ', 'ㅎ'): 'ㅀ', ('ㅂ', 'ㅅ'): 'ㅄ',
+}
 
 def compose_syllable(cho, jung, jong=0):
     return chr(0xAC00 + (cho * 21 + jung) * 28 + jong)
@@ -844,158 +829,128 @@ class HangulRasterizer:
         return g
 
 class KoreanAutomata:
-    """2-Bul-Sik Korean Input Automata"""
+    """2-Bul-Sik Korean input automaton that composes the way the Windows
+    Korean IME does.
+
+    The syllable being composed is kept as the jamo typed for it, in three
+    slots: leading consonants, vowels and final consonants. Each slot holds
+    one jamo or a pair that combines (ㅗ+ㅏ=ㅘ, ㄹ+ㄱ=ㄺ). Backspace takes back
+    the last jamo typed, so ㅘ goes back to ㅗ and 닭 to 달.
+    """
+
     def __init__(self):
         self.reset()
 
     def reset(self):
-        self.step = 0 # 0: empty, 1: cho, 2: cho+jung, 3: cho+jung+jong
-        self.cho = None
-        self.jung = None
-        self.jung_sub = None
-        self.jong = None
-        self.jong_sub = None
+        self.lead = []    # 1 consonant, or 2 that pair (ㄳ typed alone)
+        self.vowel = []   # 1 vowel, or 2 that pair
+        self.tail = []    # 1 final consonant, or 2 that pair
+        self.order = []   # slot of each jamo in typing order, for backspace
+
+    @staticmethod
+    def _pair(parts, pairs):
+        return parts[0] if len(parts) == 1 else pairs[tuple(parts)]
 
     def get_current_char(self):
-        if self.step == 1:
-            return CHO_LIST[self.cho]
-        elif self.step == 2:
-            return compose_syllable(self.cho, self.jung, 0)
-        elif self.step == 3:
-            return compose_syllable(self.cho, self.jung, self.jong)
-        return ""
+        if not self.lead and not self.vowel:
+            return ""
+        if not self.vowel:
+            return self._pair(self.lead, CONSONANT_PAIRS)
+        v = self._pair(self.vowel, VOWEL_PAIRS)
+        if not self.lead:
+            return v
+        jong = JONG_LIST.index(self._pair(self.tail, CONSONANT_PAIRS)) if self.tail else 0
+        return compose_syllable(CHO_LIST.index(self.lead[0]), JUNG_LIST.index(v), jong)
 
-    def process_key(self, key):
-        """
-        Returns (committed_char, current_char)
-        """
-        committed = ""
-        
-        # Check if key is vowel
-        if key in KEY_TO_JUNG:
-            v = KEY_TO_JUNG[key]
-            if self.step == 0:
-                return (JUNG_LIST[v], "")
-            elif self.step == 1:
-                # cho + jung
-                self.jung = v
-                self.step = 2
-                return ("", self.get_current_char())
-            elif self.step == 2:
-                # Check composite jung
-                comb = (self.jung, v)
-                if comb in COMPOSITE_JUNG:
-                    self.jung_sub = v
-                    self.jung = COMPOSITE_JUNG[comb]
-                    return ("", self.get_current_char())
-                else:
-                    # Commit previous syllable, start new vowel
-                    committed = self.get_current_char()
-                    self.reset()
-                    return (committed, JUNG_LIST[v])
-            elif self.step == 3:
-                # Syllable has jong consonant, but a vowel follows!
-                # Move jong to next cho!
-                if self.jong_sub is not None:
-                    # Double jong: split
-                    first_jong = None
-                    for (j1, j2), val in COMPOSITE_JONG.items():
-                        if val == self.jong:
-                            first_jong = j1
-                            break
-                    prev_char = compose_syllable(self.cho, self.jung, first_jong)
-                    next_cho = KEY_TO_CHO.get(self.jong_sub_key, 0)
-                    self.reset()
-                    self.cho = next_cho
-                    self.jung = v
-                    self.step = 2
-                    return (prev_char, self.get_current_char())
-                else:
-                    # Single jong moves to next syllable cho
-                    prev_char = compose_syllable(self.cho, self.jung, 0)
-                    next_cho = KEY_TO_CHO.get(self.jong_key, 0)
-                    self.reset()
-                    self.cho = next_cho
-                    self.jung = v
-                    self.step = 2
-                    return (prev_char, self.get_current_char())
+    def _add(self, slot, jamo):
+        getattr(self, slot).append(jamo)
+        self.order.append(slot)
 
-        # Key is consonant
-        elif key in KEY_TO_CHO or key in KEY_TO_JONG:
-            c_cho = KEY_TO_CHO.get(key)
-            c_jong = KEY_TO_JONG.get(key)
-
-            if self.step == 0:
-                if c_cho is not None:
-                    self.cho = c_cho
-                    self.step = 1
-                    return ("", self.get_current_char())
-            elif self.step == 1:
-                # Check for double cho (ㄱ+ㄱ=ㄲ, ㄷ+ㄷ=ㄸ, ㅂ+ㅂ=ㅃ, ㅅ+ㅅ=ㅆ, ㅈ+ㅈ=ㅉ)
-                DOUBLE_CHO = {0: 1, 3: 4, 7: 8, 9: 10, 12: 13}
-                if c_cho == self.cho and self.cho in DOUBLE_CHO:
-                    self.cho = DOUBLE_CHO[self.cho]
-                    return ("", self.get_current_char())
-                committed = self.get_current_char()
-                self.reset()
-                self.cho = c_cho
-                self.step = 1
-                return (committed, self.get_current_char())
-            elif self.step == 2:
-                # Add jong
-                if c_jong is not None:
-                    self.jong = c_jong
-                    self.jong_key = key
-                    self.step = 3
-                    return ("", self.get_current_char())
-                else:
-                    committed = self.get_current_char()
-                    self.reset()
-                    self.cho = c_cho
-                    self.step = 1
-                    return (committed, self.get_current_char())
-            elif self.step == 3:
-                # Try composite jong
-                comb = (self.jong, c_jong)
-                if comb in COMPOSITE_JONG:
-                    self.jong_sub = c_jong
-                    self.jong_sub_key = key
-                    self.jong = COMPOSITE_JONG[comb]
-                    return ("", self.get_current_char())
-                else:
-                    committed = self.get_current_char()
-                    self.reset()
-                    self.cho = c_cho
-                    self.step = 1
-                    return (committed, self.get_current_char())
-        
-        # Other key
+    def _restart(self, slot, jamo):
         committed = self.get_current_char()
         self.reset()
-        return (committed + key, "")
+        self._add(slot, jamo)
+        return committed
+
+    def feed(self, jamo):
+        """Adds one compatibility jamo; returns the text committed by it."""
+        if jamo in JUNG_LIST:
+            if self.tail:
+                # The last final consonant leads the new syllable: 닭+ㅏ = 달가
+                moved = self.tail.pop()
+                self.order.pop()
+                committed = self.get_current_char()
+                self.reset()
+                self._add('lead', moved)
+                self._add('vowel', jamo)
+                return committed
+            if self.vowel:
+                if len(self.vowel) == 1 and (self.vowel[0], jamo) in VOWEL_PAIRS:
+                    self._add('vowel', jamo)
+                    return ""
+                return self._restart('vowel', jamo)
+            if len(self.lead) == 2:
+                # ㄳ+ㅏ = ㄱ사
+                first, second = self.lead
+                self.reset()
+                self._add('lead', second)
+                self._add('vowel', jamo)
+                return first
+            self._add('vowel', jamo)
+            return ""
+
+        # Consonant
+        if not self.vowel:
+            if not self.lead:
+                self._add('lead', jamo)
+                return ""
+            if len(self.lead) == 1 and (self.lead[0], jamo) in CONSONANT_PAIRS:
+                self._add('lead', jamo)
+                return ""
+            return self._restart('lead', jamo)
+        if not self.lead:
+            return self._restart('lead', jamo)  # after a lone vowel
+        if not self.tail:
+            if jamo in JONG_LIST:
+                self._add('tail', jamo)
+                return ""
+            return self._restart('lead', jamo)  # ㄸ ㅃ ㅉ never end a syllable
+        if len(self.tail) == 1 and (self.tail[0], jamo) in CONSONANT_PAIRS:
+            self._add('tail', jamo)
+            return ""
+        return self._restart('lead', jamo)
+
+    # Engine interface shared with apple_ime.py (used by the Ctrl+K line)
+    def takes(self, ch):
+        return ch.isascii() and ch.isalpha()
+
+    def key(self, ch):
+        return self.process_key(ch)[0]
+
+    def current(self):
+        return self.get_current_char()
+
+    def flush(self):
+        """Commits whatever is being composed and returns it."""
+        committed = self.get_current_char()
+        self.reset()
+        return committed
+
+    def process_key(self, key):
+        """Feeds one keyboard letter. Returns (committed_text, composing_char)."""
+        jamo = DUBEOL_KEYS.get(key) or DUBEOL_KEYS.get(key.lower())
+        if jamo is None:
+            return (self.flush() + key, "")
+        committed = self.feed(jamo)
+        return (committed, self.get_current_char())
 
     def backspace(self):
-        """Handle backspace within composition"""
-        if self.step == 3:
-            if self.jong_sub is not None:
-                # Revert composite jong
-                for (j1, j2), val in COMPOSITE_JONG.items():
-                    if val == self.jong:
-                        self.jong = j1
-                        self.jong_sub = None
-                        break
-            else:
-                self.jong = None
-                self.step = 2
-            return self.get_current_char()
-        elif self.step == 2:
-            self.jung = None
-            self.step = 1
-            return self.get_current_char()
-        elif self.step == 1:
-            self.reset()
-            return ""
-        return None
+        """Takes back the last jamo typed. Returns the new composing char
+        ("" when nothing is left), or None when nothing was being composed."""
+        if not self.order:
+            return None
+        getattr(self, self.order.pop()).pop()
+        return self.get_current_char()
 
 def encode_apple2_multilingual(line):
     out = bytearray()
@@ -1119,6 +1074,233 @@ def prompt_korean_dialog():
         print(f"[Dialog Exception] {e}")
         return ""
 
+IME_LANGS = {
+    # name: (mode cell, engine factory)
+    'ko':   ('한', KoreanAutomata),
+    'hira': ('あ', apple_ime.KanaEngine),
+    'kata': ('ア', lambda: apple_ime.KanaEngine(katakana=True)),
+    'ru':   ('Я', apple_ime.russian_engine),
+    'el':   ('Ω', apple_ime.greek_engine),
+}
+
+
+def _is_hangul_syllable(text):
+    return len(text) == 1 and 0xAC00 <= ord(text) <= 0xD7A3
+
+
+class AppleIme:
+    """Ctrl+K input line typed on the Apple II keyboard.
+
+    The driver sends each key as typed. The line is drawn on HGR row 9, the
+    last row shown in mixed mode, while the BASIC line stays in the four text
+    lines below; Hanja candidates use row 8 above it. As in Windows, what is
+    being composed is shown inverse and commits once the next key cannot
+    join it.
+
+    Col 0 shows the mode: 한 (2-Bul-Sik), あ / ア (romaji to hiragana /
+    katakana), Я (Russian ЙЦУКЕН), Ω (Greek) or A (as typed).
+      Ctrl+K   language <-> A, as the 한/영 key
+      Ctrl+L   next language
+      Ctrl+J   (down arrow) Hanja for the syllable being composed or the one
+               before the cursor: 1-9 picks, Space / arrows page, Esc closes
+      Ctrl+P   PC input box (Windows IME, paste); its text is added
+      Return   types the line into BASIC as hex-safe \\K...\\N
+      Esc      cancels
+    """
+    ROW = 9
+    CAND_ROW = 8
+    COLS = 20
+    PER_PAGE = 9
+    MAX_PAYLOAD = 200       # bytes the driver's 256-byte input buffer takes
+    BLANK = (' ', 'plain')  # the driver blanks both rows when it shows them
+
+    def __init__(self, server):
+        self.server = server
+        self.engines = {}
+        self.units = []     # committed characters (an old Hangul syllable is one)
+        self.view = 0       # index of the first unit shown
+        self.cand = None    # open Hanja list: {'list', 'page', 'composing'}
+        self.drawn = {}     # (row, col) -> cell last drawn there
+        self.saved_mode = server._last_sent_mode
+        server.send_raw(bytes([server.CMD_SET_MODE, 0]))
+        server._last_sent_mode = 0
+        self.render()
+
+    @property
+    def lang(self):
+        s = self.server
+        return s.ime_langs[s.ime_lang % len(s.ime_langs)]
+
+    @property
+    def engine(self):
+        """The engine of the current language, or None in A mode."""
+        if self.server.ime_latin:
+            return None
+        if self.lang not in self.engines:
+            self.engines[self.lang] = IME_LANGS[self.lang][1]()
+        return self.engines[self.lang]
+
+    def text(self):
+        eng = self.engine
+        return ''.join(self.units) + (eng.current() if eng else '')
+
+    def fits(self, more):
+        return len(encode_apple2_multilingual(self.text() + more)) <= self.MAX_PAYLOAD
+
+    def commit(self):
+        if self.engine:
+            self.units.extend(self.engine.flush())
+
+    def key(self, b):
+        """Handles one key from the Apple II. Returns True once input has ended."""
+        s = self.server
+        b &= 0x7F
+        if os.environ.get("APPLE_IME_DEBUG"):
+            print(f"[IME key] ${b:02X}")
+        if self.cand is not None:
+            if self.candidate_key(b):
+                self.render()
+                return False
+            self.cand = None    # any other key closes the list and goes on as usual
+        if b == 0x1B:
+            return self.finish("")
+        if b == 0x0D:
+            return self.finish(self.text())
+        if b in (0x08, 0x7F):
+            eng = self.engine
+            if (eng is None or eng.backspace() is None) and self.units:
+                self.units.pop()
+        elif b == 0x0B:
+            self.commit()
+            s.ime_latin = not s.ime_latin
+        elif b == 0x0C:
+            self.commit()
+            if s.ime_latin:
+                s.ime_latin = False
+            else:
+                s.ime_lang = (s.ime_lang + 1) % len(s.ime_langs)
+        elif b == 0x0A:
+            self.open_hanja()
+        elif b == 0x10:
+            self.commit()
+            for unit in compose_old_hangul(s.ask_pc_text()):
+                if not self.fits(unit):
+                    break
+                self.units.append(unit)
+        elif 0x20 <= b <= 0x7E:
+            ch = chr(b)
+            eng = self.engine
+            if eng is not None and eng.takes(ch):
+                if self.fits('가가'):
+                    self.units.extend(eng.key(s.hangul_key_case(ch)))
+            elif self.fits(ch):
+                self.commit()
+                self.units.append(ch)
+        else:
+            return False
+        self.render()
+        return False
+
+    def open_hanja(self):
+        if self.server.ime_latin or self.lang != 'ko':
+            return
+        cur = self.engine.current()
+        if _is_hangul_syllable(cur):
+            syllable, composing = cur, True
+        elif self.units and _is_hangul_syllable(self.units[-1]):
+            syllable, composing = self.units[-1], False
+        else:
+            return
+        cands = apple_ime.hanja_candidates(syllable)
+        if cands:
+            self.cand = {'list': cands, 'page': 0, 'composing': composing}
+
+    def candidate_key(self, b):
+        """Keys while the Hanja list is open. True when the key was used."""
+        c = self.cand
+        pages = (len(c['list']) + self.PER_PAGE - 1) // self.PER_PAGE
+        first = c['page'] * self.PER_PAGE
+        if ord('1') <= b <= ord('9'):
+            i = first + b - ord('1')
+            if i < len(c['list']):
+                self.pick(c['list'][i])
+            return True
+        if b == 0x0D:
+            self.pick(c['list'][first])
+            return True
+        if b in (0x20, 0x15, 0x0A):     # Space, right / down arrow
+            c['page'] = (c['page'] + 1) % pages
+            return True
+        if b in (0x08, 0x0B):           # left / up arrow
+            c['page'] = (c['page'] - 1) % pages
+            return True
+        if b == 0x1B:
+            self.cand = None
+            return True
+        return False
+
+    def pick(self, hanja):
+        if self.cand['composing']:
+            self.engine.reset()
+            self.units.append(hanja)
+        else:
+            self.units[-1] = hanja
+        self.cand = None
+
+    def finish(self, text):
+        s = self.server
+        payload = encode_apple2_multilingual(text) if text else b''
+        s.send_raw(bytes([s.CMD_INPUT_BYTES, len(payload)]) + payload)
+        s._last_sent_mode = self.saved_mode
+        try:
+            if text:
+                print(f"[Ctrl+K 입력] '{text}' ({len(payload)} 바이트) -> Apple II BASIC 줄에 입력")
+            else:
+                print("[Ctrl+K 취소] 입력 없이 BASIC 줄로 복귀")
+        except Exception:
+            pass
+        return True
+
+    def render(self):
+        eng = self.engine
+        cur = eng.current() if eng else ''
+        content = [(u, 'plain') for u in self.units]
+        content += [(c, 'inverse') for c in cur] or [(' ', 'cursor')]
+        room = self.COLS - 1
+        if len(content) - self.view > room or len(content) <= self.view:
+            # Page by half a line, so the whole row is redrawn only now and then
+            self.view = max(0, len(content) - room // 2)
+        mode = 'A' if self.server.ime_latin else IME_LANGS[self.lang][0]
+        line = [(mode, 'inverse')] + content[self.view:self.view + room]
+
+        cands = []
+        if self.cand is not None:
+            c = self.cand
+            first = c['page'] * self.PER_PAGE
+            for n, h in enumerate(c['list'][first:first + self.PER_PAGE], 1):
+                cands += [(str(n), 'inverse'), (h, 'plain')]
+            cands += [self.BLANK] * (self.COLS - 2 - len(cands))
+            cands += [('<' if c['page'] > 0 else ' ', 'plain'),
+                      ('>' if first + self.PER_PAGE < len(c['list']) else ' ', 'plain')]
+
+        for row, cells in ((self.CAND_ROW, cands), (self.ROW, line)):
+            cells = cells + [self.BLANK] * (self.COLS - len(cells))
+            for col, cell in enumerate(cells):
+                if self.drawn.get((row, col), self.BLANK) != cell:
+                    self.draw(row, col, cell)
+                    self.drawn[(row, col)] = cell
+
+    def draw(self, row, col, cell):
+        ch, style = cell
+        glyph = bytearray(self.server.rasterizer.rasterize(ch) if ch != ' ' else bytes(32))
+        if style == 'inverse':
+            glyph = bytearray(x ^ 0x7F for x in glyph)
+        elif style == 'cursor':
+            for i in range(28, 32):     # underline on rows 14-15
+                glyph[i] |= 0x7F
+        self.server.send_raw(bytes([self.server.CMD_DRAW_GLYPH, col, row]) + bytes(glyph))
+
+
 class HangulTerminalServer:
     CMD_DRAW_14x16  = 0x81
     CMD_CLEAR       = 0x82
@@ -1134,7 +1316,7 @@ class HangulTerminalServer:
     MAX_COLS = 20
     MAX_ROWS = 12
 
-    def __init__(self, host="127.0.0.1", port=1977, com_port=None, font_path=None, font_size=None, y_offset=None, box_center=None, force_vector=False, use_popup=False, color=3, draw_mode="replace", color_font=None):
+    def __init__(self, host="127.0.0.1", port=1977, com_port=None, font_path=None, font_size=None, y_offset=None, box_center=None, force_vector=False, use_popup=False, color=3, draw_mode="replace", color_font=None, pc_input=False, ime_langs=("ko", "hira", "kata", "ru", "el")):
         self.host = host
         self.port = port
         self.com_port = com_port
@@ -1142,6 +1324,10 @@ class HangulTerminalServer:
         self.serial_io = None
         self.running = False
         self.use_popup = use_popup
+        # Ctrl+K in BASIC: False types 2-Bul-Sik on the Apple II keyboard
+        # (AppleIme); True opens the PC input box straight away, as before.
+        self.pc_input = pc_input
+        self.ime = None
         
         self.rasterizer = HangulRasterizer(font_path=font_path, font_size=font_size, y_offset=y_offset, box_center=box_center, force_vector=force_vector)
         self.default_rasterizer = self.rasterizer
@@ -1157,6 +1343,11 @@ class HangulTerminalServer:
         self._last_sent_mode = 0
         self.has_drawn = False
         self.hangul_mode = True # Default Korean 2-bul-sik mode
+        # Mode of the Ctrl+K line, kept between uses: a language from
+        # ime_langs (IME_LANGS keys), or A (as typed) when ime_latin
+        self.ime_langs = list(ime_langs)
+        self.ime_lang = 0
+        self.ime_latin = False
         self.mode = "INIT"      # "TERMINAL" or "BASIC"
         self.utf8_mode = False
         self.utf8_buf = bytearray()
@@ -1252,6 +1443,28 @@ class HangulTerminalServer:
         for ch in compose_old_hangul(text):
             self.put_char(ch)
 
+    def hangul_key_case(self, ch):
+        """Decides whether an upper-case letter from the Apple II was typed with
+        Shift (ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ) or only under Caps Lock.
+
+        AppleWin on this PC: the PC's own Shift key says which. Caps Lock is on
+        by default in AppleWin, so the letter's case alone would read every
+        R as ㄲ. On real hardware the byte's case is all there is, so Caps
+        Lock has to be off on the //e for 2-Bul-Sik.
+        """
+        if not ('A' <= ch <= 'Z') or not self._pc_shift_visible():
+            return ch
+        try:
+            import ctypes
+            shift = (ctypes.windll.user32.GetAsyncKeyState(0x10) & 0x8000) != 0
+        except Exception:
+            return ch
+        return ch if shift else ch.lower()
+
+    def _pc_shift_visible(self):
+        return (os.name == 'nt' and self.sock is not None
+                and self.host in ('127.0.0.1', 'localhost', '::1'))
+
     def handle_apple2_key(self, b):
         ch = chr(b)
         
@@ -1307,19 +1520,7 @@ class HangulTerminalServer:
             print(f"\n[Mode Changed] -> {mode_str}")
             return
 
-        # In Apple II, Caps Lock is ON by default, sending uppercase letters.
-        # Normalize uppercase to lowercase unless Shift is held.
-        norm_ch = ch
-        if 'A' <= ch <= 'Z':
-            try:
-                import ctypes
-                is_shift = (ctypes.windll.user32.GetAsyncKeyState(0x10) & 0x8000) != 0
-            except Exception:
-                is_shift = False
-            if is_shift and ch in 'QWERTOP':
-                norm_ch = ch
-            else:
-                norm_ch = ch.lower()
+        norm_ch = self.hangul_key_case(ch)
 
         # If in Hangul Mode and key is valid Hangul letter (a-z / A-Z)
         if self.hangul_mode and ((norm_ch >= 'a' and norm_ch <= 'z') or (norm_ch >= 'A' and norm_ch <= 'Z')):
@@ -1432,6 +1633,19 @@ class HangulTerminalServer:
         else:
             self.send_raw(bytes([self.CMD_DONE]))
 
+    def ask_pc_text(self):
+        """Asks for a line on the PC (popup or this console), typed with the
+        Windows IME or pasted. Returns "" when cancelled."""
+        if self.use_popup:
+            print("한글 / 漢字 입력 팝업창을 엽니다...")
+            return prompt_korean_dialog()
+        print("이 콘솔창에 한글 또는 한자를 직접 입력(붙여넣기)한 후 Enter를 누르세요:")
+        print("(입력을 취소하려면 내용 없이 Enter만 누르세요)")
+        try:
+            return input("한글/漢字 입력 > ")
+        except (EOFError, KeyboardInterrupt):
+            return ""
+
     def listen_apple2(self):
         """Thread that reads bytes from Apple II"""
         while self.running:
@@ -1439,6 +1653,11 @@ class HangulTerminalServer:
                 b = self.recv_byte()
                 if b is None:
                     time.sleep(0.01)
+                    continue
+                if self.ime is not None:
+                    # Ctrl+K line: the driver sends nothing but keys until it ends
+                    if self.ime.key(b):
+                        self.ime = None
                     continue
                 if b == 0xAA:
                     self.mode = "TERMINAL"
@@ -1604,20 +1823,16 @@ class HangulTerminalServer:
                     self.send_raw(bytes([0x00])) # Send CMD_DONE
                     continue
 
-                if b == 0x0B:
+                if b == 0x0B and self.mode != "TERMINAL":
                     # Ctrl+K requested by Apple II
                     print("\n" + "=" * 50)
                     print("[Apple II -> PC] Ctrl+K 특수키 감지!")
-                    if self.use_popup:
-                        print("한글 / 漢字 입력 팝업창을 엽니다...")
-                        line = prompt_korean_dialog()
-                    else:
-                        print("이 콘솔창에 한글 또는 한자를 직접 입력(붙여넣기)한 후 Enter를 누르세요:")
-                        print("(입력을 취소하려면 내용 없이 Enter만 누르세요)")
-                        try:
-                            line = input("한글/漢字 입력 > ")
-                        except (EOFError, KeyboardInterrupt):
-                            line = ""
+                    if not self.pc_input:
+                        print("Apple II 키보드로 입력 (Ctrl+K 한/영, Ctrl+L 언어, Ctrl+J 한자, Return 입력, Esc 취소, Ctrl+P PC 입력창)")
+                        print("=" * 50 + "\n")
+                        self.ime = AppleIme(self)
+                        continue
+                    line = self.ask_pc_text()
 
                     if line:
                         payload = encode_apple2_multilingual(line)
@@ -1692,13 +1907,17 @@ class HangulTerminalServer:
         
         print("\n" + "=" * 50)
         print("Apple II Hangul Server Active (Port 1977 Connected)")
-        if self.use_popup:
+        if not self.pc_input:
+            print("  * AppleWin에서 BASIC 작성 중 Ctrl+K 를 누르면")
+            print("    Apple II 키보드로 2벌식 한글·가나·러시아어·그리스어를 입력합니다 (화면 아래 입력 줄).")
+            print("    Ctrl+K 한/영, Ctrl+L 언어 바꾸기, Ctrl+J(↓) 한자, Return 입력, Esc 취소, Ctrl+P PC 입력창")
+        elif self.use_popup:
             print("  * AppleWin에서 BASIC 작성 중 Ctrl+K 를 누르면")
             print("    화면에 한글 입력 팝업창이 바로 뜹니다.")
         else:
             print("  * AppleWin에서 BASIC 작성 중 Ctrl+K 를 누르면")
             print("    이 콘솔창에서 바로 한글/한자를 직접 입력(붙여넣기)할 수 있습니다.")
-        print("  * 입력 후 Enter를 치면 Apple II로 전달됩니다.")
+        print("  * 입력 후 Enter(Return)를 치면 Apple II로 전달됩니다.")
         print("  * 종료하려면 Ctrl+C 를 누르세요.")
         print("=" * 50 + "\n")
 
@@ -1728,6 +1947,8 @@ if __name__ == "__main__":
     parser.add_argument("--color-font", default=None, help="Vector font(s) for coloured text, drawn 7 columns wide (default: Malgun Gothic, then system CJK fonts)")
     parser.add_argument("--mode", default="replace", help="Default drawing mode: replace, overlay, or xor (default: replace)")
     parser.add_argument("--popup", action="store_true", help="Use GUI popup window for Korean/Hanja input instead of console prompt")
+    parser.add_argument("--pc-input", action="store_true", help="Ctrl+K opens the PC input (console or --popup) straight away, instead of 2-Bul-Sik typing on the Apple II keyboard")
+    parser.add_argument("--ime-langs", default="ko,hira,kata,ru,el", help="Languages Ctrl+L cycles through on the Ctrl+K line, first is the default: ko (2-Bul-Sik), hira, kata (romaji to kana), ru (ЙЦУКЕН), el (Greek)")
     parser.add_argument("--audio-wav", default=None, help="Export entire font table as ADTPro-compatible WAV file for Apple II Cassette In")
     parser.add_argument("--play-audio", action="store_true", help="Play font audio stream through PC audio out directly to Apple II Cassette In")
     args = parser.parse_args()
@@ -1756,6 +1977,8 @@ if __name__ == "__main__":
         use_popup=args.popup,
         color=args.color,
         draw_mode=args.mode,
-        color_font=args.color_font
+        color_font=args.color_font,
+        pc_input=args.pc_input,
+        ime_langs=[l for l in (p.strip() for p in args.ime_langs.split(",")) if l in IME_LANGS] or ["ko"]
     )
     server.start()

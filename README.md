@@ -93,8 +93,8 @@ You can write this directly in Applesoft BASIC using standard line numbers and t
 
 ### How to Input Hanja & Multilingual Text in AppleWin:
 1. Type `50 & "` in AppleWin.
-2. Press **`Ctrl+K`**.
-3. A host input window appears on your PC. Type or paste `[ 祭亡妹歌 (제망매가) ]` and press `Enter`.
+2. Press **`Ctrl+K`**, then **`Ctrl+P`** to type the line on the PC. (Or type it on the Apple II keyboard: Hangul in 2-Bul-Sik, each syllable turned into Hanja with `Ctrl+J`; see [Ctrl+K](#2-interactive-ctrlk-input-2-bul-sik-hanja-kana-russian-greek).)
+3. A host input prompt appears on your PC (a window with `--popup`). Type or paste `[ 祭亡妹歌 (제망매가) ]` and press `Enter`, then `Return` on the Apple II.
 4. The bridge automatically injects the hex-safe stream `\K[ 祭亡妹歌 (제망매가) ]\N` into the BASIC prompt.
 5. Close the quotes with `"` and press `Enter`.
 6. Type `RUN` — the Apple II immediately switches to HGR High-Resolution graphics and draws the rendered typography!
@@ -127,7 +127,7 @@ The hex strings are UTF-8 for:
 百ᄇᆡᆨ姓셔ᇰ이 니르고져 / 호ᇙ배이셔도 ᄆᆞᄎᆞᆷ내 / 제ᄠᅳ들 시러펴디 / 몯ᄒᆞᇙ노미 하니라
 ```
 
-Paste the text with **`Ctrl+K`** instead of typing hex, as for any other Unicode string. Composition needs `pip install uharfbuzz`.
+Paste the text with **`Ctrl+K`** then **`Ctrl+P`** instead of typing hex, as for any other Unicode string. Composition needs `pip install uharfbuzz`.
 
 ### How to Run It (AppleWin)
 
@@ -146,7 +146,7 @@ Paste the text with **`Ctrl+K`** instead of typing hex, as for any other Unicode
    POKE 24576,0
    ```
    *Without this step the driver draws from the `$6000` cache that `HELLO` loaded, which holds glyphs one UTF-8 character at a time: old Hangul there is spelled apart, jamo by jamo.*
-6. Type the program above (or paste each line's text with `Ctrl+K` after `10 & "`), then `RUN`.
+6. Type the program above (or paste each line's text with `Ctrl+K`, `Ctrl+P` after `10 & "`), then `RUN`.
 
 The same program in AppleWin 1.32.1 (Monochrome Green), captured from its window:
 
@@ -166,12 +166,35 @@ You can print multilingual Unicode text right from Applesoft BASIC:
 ```
 When executed (`RUN`), the driver switches to HGR graphics mode and renders high-density typographic glyphs with accurate letter spacing and vertical alignment.
 
-### 2. Interactive `Ctrl+K` Input Bridge
-Writing non-ASCII scripts on an Apple II keyboard is challenging. With this bridge:
-- While typing a BASIC program in AppleWin or terminal, press **`Ctrl+K`**.
-- The PC server opens an instant input prompt / popup window.
-- Type or paste your desired Unicode text (in your OS's native IME) and hit `Enter`.
-- The text is hex-encoded and injected into the Apple II input buffer automatically.
+### 2. Interactive `Ctrl+K` Input (2-Bul-Sik, Hanja, Kana, Russian, Greek)
+While typing a BASIC program, press **`Ctrl+K`** and type on the Apple II keyboard. An input line opens on the last HGR row in mixed mode, with the four text lines (and so the BASIC line, once it is near the bottom) below it. As in the Windows IMEs, what is being composed is shown inverse and commits once the next key cannot join it.
+
+| Mode (col 0) | Typing | Example |
+| :--- | :--- | :--- |
+| **한** 2-Bul-Sik | Standard layout; Shift for ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ (repeating a key does not double it). Backspace takes back one jamo (과 → 고, 닭 → 달). | `dkssud` → 안녕, `ekfrk` → 달가, `rt` → ㄳ |
+| **あ** / **ア** Kana | Romaji to hiragana / katakana as the Microsoft IME takes it: `kka` → っか, `n` before a consonant or `nn` → ん, `-` → ー, `,` `.` → 、。, `[` `]` → 「」 | `nihon` → にほん, `ko-hi-` → コーヒー |
+| **Я** Russian | ЙЦУКЕН layout (`/` and `?` type `.` and `,`) | `ghbdtn` → привет |
+| **Ω** Greek | Greek layout; `;` then a vowel adds the tonos, `:` the dialytika | `kalhm;era` → καλημέρα |
+| **A** | As typed | |
+
+| Key | Action |
+| :--- | :--- |
+| `Ctrl+K` | Language ↔ A (the 한/영 key) |
+| `Ctrl+L` | Next language: 한 → あ → ア → Я → Ω (`--ime-langs ko,hira,kata,ru,el` picks and orders them; the first is the default) |
+| `Ctrl+J` (↓) | **Hanja** for the syllable being composed, or the one before the cursor. The candidates (8,649 Hanja for 486 readings, most common first) appear on the row above: `1`–`9` picks, `Space` / → / ↓ next page, ← / ↑ previous, `Return` the first, `Esc` closes the list |
+| `Ctrl+P` | PC input (console, or a window with `--popup`): anything else, typed with the PC's own IME or pasted, is added to the line |
+| `Return` | Puts the line into BASIC as hex-safe `\K…\N` |
+| `Esc` | Cancels |
+
+![Ctrl+J: Hanja candidates for 한 above the input line](docs/images/ime_hanja.png)
+
+![RUN: 限 にほん привет καλημέρα, all typed on the Apple II keyboard](docs/images/ime_multi_run.png)
+
+**Shift and Caps Lock**: with AppleWin on the same PC the server reads the PC's Shift key, so Caps Lock does not matter. On real hardware the server goes by the letter's case, so turn Caps Lock off on the //e (on a II+, with no lower case, Shift-only letters cannot be typed).
+
+Hanja are converted a syllable at a time, and kana stay kana (there is no kana-to-kanji conversion; use `Ctrl+P` for kanji). The Hanja table `hanja_table.txt` is built from the Unicode Han Database by `tools/build_hanja_table.py`.
+
+`python unicode_server.py --pc-input` brings back the old behaviour, where `Ctrl+K` opens the PC input straight away. Tests: `python tools/test_dubeol_ime.py` (2-Bul-Sik rules), `python tools/test_ime_engines.py` (kana, Russian, Greek, Hanja, mode keys) and `python tools/test_ime_live.py` (types lines in AppleWin and saves screenshots).
 
 ### 3. Hex-Safe Stream Protocol (`\K ... \N`)
 Standard Apple II line input (`GETLN`) and Applesoft keyword parsing (`PARSE`) treat byte values `$80`–`$FF` as internal BASIC tokens or control codes. Raw UTF-8 byte streams cause immediate syntax errors.
@@ -207,6 +230,8 @@ While the live font server streams unlimited Unicode glyphs dynamically, you can
 | :--- | :--- |
 | **`unicode_server.py`** | Universal Unicode font co-processor & streaming serial/TCP server (Python 3). |
 | **`old_hangul.py`** | Old Hangul (Hunminjeongeum) syllable composition with HarfBuzz, used by the server. |
+| **`apple_ime.py`** | `Ctrl+K` input engines besides 2-Bul-Sik (kana, Russian, Greek) and the Hanja lookup. |
+| **`hanja_table.txt`** | Hangul reading → Hanja candidates, built from Unihan by `tools/build_hanja_table.py`. |
 | **`unicode_server.exe`** | Standalone pre-compiled Windows executable (bundled with default CJK font). |
 | **`ac_tool.py`** | AppleCommander management wrapper & standalone DSK inspection CLI. |
 | **`build_font_dsk.py`** | Automated font subsetter: extracts used glyphs, bakes `FONT` binary ($6000) into DSK for standalone execution. |
