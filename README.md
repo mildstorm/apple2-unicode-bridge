@@ -358,7 +358,7 @@ RUN DEMO
 | :--- | :--- | :--- |
 | DOS 3.3 `unicode.dsk` + server | `$6000` cache (characters baked in by `build_font_dsk.py`); `POKE 24576,0` sends everything to the server (any character, old Hangul, colour) | Server |
 | DOS 3.3 `unicode.dsk`, no server | `$6000` cache only | — |
-| ProDOS hard disk, no server | `UFONT`: any of its 34,596 characters | `Ctrl+K` onboard (2-Bul-Sik, Hanja); no terminal mode |
+| ProDOS hard disk, no server | `UFONT`: any of its 34,951 characters | `Ctrl+K` onboard (2-Bul-Sik, Hanja); no terminal mode |
 | ProDOS hard disk + server | `UFONT`; `POKE 16387,0` sends them to the server | `Ctrl+K` onboard; `POKE 16453,1` the server. Terminal mode: server |
 | No disk of fonts, no serial card | `& "/TAPE"` loads a cache through the cassette input ([Cassette Input](#-cassette-input-the-font-cache-without-a-serial-card-or-disk)) | — |
 
@@ -430,7 +430,7 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 
 | `--size` | Glyphs | Disk used |
 | :--- | :--- | :--- |
-| `32M` (65,535 blocks, default) | 34,596: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs | 1.1 MB |
+| `32M` (65,535 blocks, default) | 34,951: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility and conjoining jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs | 1.1 MB |
 | `800K` (1,600 blocks) | 13,238: the same without Hanja (spread over 20,992 code points they need about 1,300 blocks) | 477 KB |
 
 `--font` picks the font chain (default `Galmuri14.ttf, NotoSerifCJK16.ttf`).
@@ -470,13 +470,13 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 
 Under ProDOS the driver takes its 1 KB file buffer from BASIC.SYSTEM (`GETBUFR`), so HIMEM drops from 38400 to 37376 (`$9200`). The driver itself fills `$4000`–`$5EFF`.
 
-Without the server, old Hangul syllables (which need HarfBuzz) and the coloured-text rasteriser are not available. `Ctrl+K` composes on the Apple II (2-Bul-Sik and Hanja; see below), or through the server with `POKE 16453,1`. `python tools/test_hdd_live.py [image]` boots an image in AppleWin, runs both demos and puts AppleWin's settings back afterwards.
+Without the server, old Hangul is drawn one jamo to a cell (composing a syllable into one cell needs the server's HarfBuzz, `POKE 16387,0`), and colour is the driver's own (the server's 7-column colour rasteriser draws it finer). `Ctrl+K` composes on the Apple II (2-Bul-Sik and Hanja; see below), or through the server with `POKE 16453,1`. `python tools/test_hdd_live.py [image]` boots an image in AppleWin, runs both demos and puts AppleWin's settings back afterwards.
 
 ### 3. How to Input Korean After Hard-Disk Boot (`unicode.hdv`)
 
 After booting `unicode.hdv`, both drawing and 2-Bul-Sik typing work **with no PC and no serial card**:
 
-1. **Drawing**: `UFONT` holds about 34,600 glyphs, so `RUN HDDEMO`, `RUN JEMANG` and any program's `&` strings draw on the Apple II alone.
+1. **Drawing**: `UFONT` holds about 35,000 glyphs, so `RUN HDDEMO`, `RUN JEMANG` and any program's `&` strings draw on the Apple II alone.
 2. **Typing with `Ctrl+K` (onboard, the default)**:
    - At the `]` prompt, type `10 & "` and press **`Ctrl+K`**. The input line opens at the bottom with `[한]`.
    - Type in 2-Bul-Sik (`gksrmf` → 한글). What is being composed shows inverse; Backspace takes back one jamo; `Ctrl+K` switches 한 ↔ A.

@@ -41,6 +41,11 @@ RANGES = [
     (0x00A0, 0x024F, "Latin-1, Latin Extended"),
     (0x0370, 0x03FF, "Greek"),
     (0x0400, 0x04FF, "Cyrillic"),
+    # Old Hangul is written in these; without the server (which composes a
+    # syllable to a cell) they are drawn one jamo to a cell, not left blank
+    (0x1100, 0x11FF, "Hangul jamo (old Hangul)"),
+    (0xA960, 0xA97F, "Hangul jamo extended-A"),
+    (0xD7B0, 0xD7FF, "Hangul jamo extended-B"),
     (0x2000, 0x206F, "punctuation"),
     (0x2100, 0x218F, "letterlike, number forms"),
     (0x2190, 0x22FF, "arrows, math"),
