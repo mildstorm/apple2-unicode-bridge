@@ -184,6 +184,14 @@ Applesoft BASIC에서 바로 다국어 유니코드 문장을 출력할 수 있�
 > - 방식별 제약과 참고 사항: [하드디스크만으로 되는 것과 서버가 필요한 것](#4-하드디스크만으로-되는-것과-서버가-필요한-것).
 > - **SSC 설정**: **AppleWin**: **`F10`(설정) → [Serial] 탭**에서 **Slot 2 Serial Port**를 **`TCP`**(1977번 포트)로. **실기**: **Slot 2에 Super Serial Card**, RS-232/USB 시리얼 케이블로 PC에 연결, `python unicode_server.py --com COMx`.
 
+#### 데모: Apple II 혼자 입력 (하드디스크, 시리얼 카드·서버 없음)
+SSC 연결도 PC 서버도 없이 `unicode.hdv`로 부팅한 AppleWin에서 녹화했습니다(`python tools/record_onboard_gif.py`). 각 장면 아래 글은 방금 누른 키입니다.
+
+| 2벌식, 자모 하나씩 조합 | `Ctrl+J`로 한자 |
+| :---: | :---: |
+| ![온보드 2벌식: ㅇ 아 안 안ㄴ 안녀 안녕 … 안녕하세요, 백스페이스, Return, RUN](docs/images/onboard_hangul.gif) | ![온보드 한자: 한, Ctrl+J, 8 → 韓; 국, Ctrl+J, 1 → 國; RUN](docs/images/onboard_hanja.gif) |
+| `dkssud gktpdy` → 안녕하세요: 받침이 다음 글자로 넘어가고(핫 → 하세), 백스페이스는 자모 하나를 되돌리며, Return이 BASIC 줄에 `\K…\N`을 넣고, `RUN`이 `UFONT`로 그립니다 | `gks` → 한, `Ctrl+J`로 입력 줄 위에 한자 후보, `8` → 韓; `rnr` → 국, `Ctrl+J`, `1` → 國; `RUN`이 韓國을 그립니다 |
+
 BASIC 프로그램을 입력하다가 **`Ctrl+K`** 를 누르면 Apple II 키보드로 입력할 수 있습니다. 혼합 모드 HGR의 마지막 줄에 입력 줄이 열리고, 그 아래 텍스트 4줄이 보입니다. BASIC 줄이 화면 아래쪽에 있으면 함께 보입니다. Windows 입력기처럼 조합 중인 글자는 반전으로 보이고, 다음 키가 붙을 수 없을 때 확정됩니다.
 
 | 모드(0번 칸) | 입력 | 예 |
@@ -495,7 +503,7 @@ ProDOS에서는 드라이버가 1KB 파일 버퍼를 BASIC.SYSTEM에서 받으�
 3. **필요할 때 SSC로 서버 쓰기**: `POKE 16453,1`이면 `Ctrl+K`가 DOS 3.3 플로피에서처럼 `unicode_server.py`로 갑니다. 일본어 가나·러시아어·그리스어(`Ctrl+L`), PC 입력과 붙여 넣기(`Ctrl+P`)가 이 방식입니다. 터미널 모드(`&`만)와 서버로 그리기(`POKE 16387,0`: 옛한글, 컬러)도 서버가 필요합니다. `POKE 16453,0`이면 다시 온보드입니다.
    - **SSC 설정**: **AppleWin**: **`F10`(설정) → [Serial] 탭**에서 **Slot 2 Serial Port** = **`TCP`**(1977번 포트). **실기**: **Slot 2에 Super Serial Card**, PC와 케이블 연결, `python unicode_server.py --com COMx`(AppleWin이면 `python unicode_server.py`).
 
-![AppleWin에서 서버 없이 온보드 Ctrl+J: 입력 줄 위의 '한' 한자 후보](docs/images/onboard_hanja.png)
+위 과정을 녹화한 것: [데모: Apple II 혼자 입력](#데모-apple-ii-혼자-입력-하드디스크-시리얼-카드서버-없음).
 
 ### 4. 하드디스크만으로 되는 것과 서버가 필요한 것
 

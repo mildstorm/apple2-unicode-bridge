@@ -184,6 +184,14 @@ When executed (`RUN`), the driver switches to HGR graphics mode and renders high
 > - Limits and notes of each way: [What the Hard Disk Does Alone, and What Needs the Server](#4-what-the-hard-disk-does-alone-and-what-needs-the-server).
 > - **SSC setup**: **AppleWin**: **Configuration (F10) → [Serial] tab**, **Slot 2 Serial Port** set to **`TCP`** (port 1977). **Real Apple II**: a **Super Serial Card** in **Slot 2**, an RS-232 / USB-serial cable to the PC, and `python unicode_server.py --com COMx`.
 
+#### Demo: typing on the Apple II alone (hard disk, no serial card, no server)
+Recorded in AppleWin booted from `unicode.hdv` with no SSC connection and no PC server (`python tools/record_onboard_gif.py`); the caption under each frame is the key just pressed.
+
+| 2-Bul-Sik, a jamo at a time | Hanja with `Ctrl+J` |
+| :---: | :---: |
+| ![Onboard 2-Bul-Sik: ㅇ 아 안 안ㄴ 안녀 안녕 … 안녕하세요, Backspace, Return, RUN](docs/images/onboard_hangul.gif) | ![Onboard Hanja: 한, Ctrl+J, 8 → 韓; 국, Ctrl+J, 1 → 國; RUN](docs/images/onboard_hanja.gif) |
+| `dkssud gktpdy` → 안녕하세요: a final consonant moves on to the next syllable (핫 → 하세), Backspace takes back one jamo, Return types `\K…\N` into the BASIC line, `RUN` draws it from `UFONT` | `gks` → 한, `Ctrl+J` shows its Hanja above the line, `8` → 韓; `rnr` → 국, `Ctrl+J`, `1` → 國; `RUN` draws 韓國 |
+
 While typing a BASIC program, press **`Ctrl+K`** and type on the Apple II keyboard. An input line opens on the last HGR row in mixed mode, with the four text lines (and so the BASIC line, once it is near the bottom) below it. As in the Windows IMEs, what is being composed is shown inverse and commits once the next key cannot join it.
 
 | Mode (col 0) | Typing | Example |
@@ -495,7 +503,7 @@ After booting `unicode.hdv`, both drawing and 2-Bul-Sik typing work **with no PC
 3. **With the server over the SSC (when needed)**: `POKE 16453,1`, and `Ctrl+K` goes to `unicode_server.py` as on the DOS 3.3 floppy, for Japanese kana, Russian and Greek (`Ctrl+L`), PC input and paste (`Ctrl+P`). Terminal mode (`&` alone) and drawing through the server (`POKE 16387,0`: old Hangul, colour) need it too. `POKE 16453,0` goes back to onboard.
    - **SSC setup**: **AppleWin**: **Configuration (F10) → [Serial] tab**, **Slot 2 Serial Port** = **`TCP`** (port 1977). **Real hardware**: a **Super Serial Card** in **Slot 2**, a cable to the PC, `python unicode_server.py --com COMx` (`python unicode_server.py` for AppleWin).
 
-![Onboard Ctrl+J in AppleWin, no server: Hanja candidates for 한 above the input line](docs/images/onboard_hanja.png)
+The steps above, recorded: [Demo: typing on the Apple II alone](#demo-typing-on-the-apple-ii-alone-hard-disk-no-serial-card-no-server).
 
 ### 4. What the Hard Disk Does Alone, and What Needs the Server
 
