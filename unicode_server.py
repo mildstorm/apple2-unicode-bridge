@@ -1468,11 +1468,11 @@ class HangulTerminalServer:
     def handle_apple2_key(self, b):
         ch = chr(b)
         
-        # ESC -> Exit
+        # ESC: the driver has left terminal mode; back to BASIC, server keeps running
         if b == 0x1B:
-            print("\n[Term] Exit requested by Apple II.")
-            self.running = False
-            self.send_raw(bytes([self.CMD_EXIT]))
+            print("\n[Term] Terminal mode closed on the Apple II, back to BASIC.")
+            self.automata.reset()
+            self.mode = "BASIC"
             return
 
         # Backspace (0x08 or 0x7F)
@@ -1663,10 +1663,9 @@ class HangulTerminalServer:
                     self.mode = "TERMINAL"
                     print("\n[Term] Terminal Client Handshake received from Apple II (READY!)")
                     self.clear_screen()
-                    self.put_string("한글 시스템 준비완료\n")
-                    self.put_string("Apple II + Gulim 14\n")
+                    self.put_string("한글 터미널 준비완료\n")
+                    self.put_string("Ctrl+K 한/영 ESC 끝\n")
                     self.put_string("--------------------\n")
-                    self.put_string("안녕하세요 漢字\n")
                     continue
                 if b == 0xAB:
                     self.mode = "BASIC"

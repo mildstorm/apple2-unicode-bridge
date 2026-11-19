@@ -24,6 +24,7 @@ Apple II의 원래 하드웨어는 1970년대 문자 생성 롬(ROM)에 묶여 �
 4. **Hex 안전 인코딩**: Apple II의 8비트 입력 처리와 Caps Lock 때문에 생기는 BASIC 토큰 충돌($80–$EA)과 `?SYNTAX ERROR`를 막습니다.
 5. **대화형 전체화면 터미널**: 키보드 입력, 한글 입력기(IME), 자동 줄바꿈을 지원하는 280×192 그래픽 콘솔을 제공합니다.
 6. **Apple II 키보드로 입력**: BASIC 작성 중 `Ctrl+K`를 누르면 입력 줄이 열려, 2벌식 한글(한자 변환 포함)·일본어 가나·러시아어·그리스어를 Windows 입력기와 같은 방식으로 조합해 칠 수 있습니다([Ctrl+K](#2-ctrlk-입력-2벌식한자가나러시아어그리스어) 참고).
+7. **실기용 하드디스크 글꼴**: ProDOS 하드디스크에 둔 글꼴 파일에서 드라이버가 모든 글리프(한글·한자·가나·그리스어·러시아어·기호)를 읽으므로, PC를 연결하지 않은 실기에서도 유니코드가 나옵니다([ProDOS 하드디스크](#-prodos-하드디스크-서버-없이-글꼴-전체) 참고).
 
 ---
 
@@ -203,10 +204,10 @@ Apple II의 줄 입력 루틴(`GETLN`)과 Applesoft 키워드 해석기(`PARSE`)
 - 따라서 Apple II의 `Caps Lock` 상태, 따옴표, 줄바꿈 처리의 영향을 전혀 받지 않습니다.
 
 ### 4. 대화형 터미널 모드
-Applesoft 프롬프트 `]`에서 `&`만 입력하면 전체화면 대화형 그래픽 터미널로 들어갑니다:
-- 한글 2벌식 입력기, 라틴 문자, 단축키를 지원합니다.
+Applesoft 프롬프트 `]`에서 `&`만 입력하면 서버가 그리는 전체화면 그래픽 터미널로 들어갑니다(DOS 3.3, ProDOS 모두):
+- `Ctrl+K` 입력 줄과 같은 방식으로 조합되는 2벌식 한글, 라틴 문자, 단축키를 지원합니다.
 - `Ctrl+K` 또는 `` ` ``(백틱)으로 한글과 영문 입력을 바로 전환합니다.
-- `ESC`로 Applesoft BASIC에 안전하게 돌아갑니다.
+- `ESC`로 Applesoft BASIC에 돌아갑니다. 서버는 계속 실행되며 BASIC 모드로 돌아갑니다.
 
 ### 5. 옛한글(훈민정음) 모아쓰기
 옛한글(아래아 ㆍ, 옛 자모, 방점)은 완성형 코드가 없어 음절을 조합형 자모(U+1100–11FF, U+A960–A97F, U+D7B0–D7FF)를 이어 써서 나타냅니다. 코드포인트 하나씩 그리면 풀어쓰기가 됩니다. 서버는 음절 하나를 HarfBuzz로 `NotoSerifCJK16.ttf`의 `ljmo/vjmo/tjmo` 기능에 맞춰 모아 14×16 한 칸에 그립니다(`old_hangul.py`). 옛한글이 든 문자열은 현대 음절도 같은 글꼴로 그립니다. 예: `10 & "\KEB8298EB9E8FEBA790E1848AE1869EEBAFB8\N"` → `나랏말ᄊᆞ미`가 다섯 칸으로 표시됩니다.
@@ -233,6 +234,8 @@ PC 폰트 서버는 유니코드 글리프를 제한 없이 보내 주지만, BA
 | **`old_hangul.py`** | 서버가 쓰는 옛한글(훈민정음) 음절 조합 모듈 (HarfBuzz). |
 | **`apple_ime.py`** | 2벌식 외의 `Ctrl+K` 입력기(가나·러시아어·그리스어)와 한자 찾기. |
 | **`hanja_table.txt`** | 한글 읽기 → 한자 후보 표. `tools/build_hanja_table.py`가 Unihan으로 만듦. |
+| **`build_hdd.py`** | 서버 없이 그리기 위한 글꼴 전체(`UFONT`)를 담은, 부팅 가능한 ProDOS 하드디스크 이미지를 만듦. |
+| **`tools/prodos_image.py`** | ProDOS 볼륨 읽기/쓰기(희소 파일, 32MB까지)와 Applesoft 토큰화. `build_hdd.py`가 씀. |
 | **`unicode_server.exe`** | 미리 빌드한 Windows 단독 실행 파일 (기본 CJK 폰트 내장). |
 | **`ac_tool.py`** | AppleCommander 연동 래퍼 및 DSK 확인용 CLI. |
 | **`build_font_dsk.py`** | 자동 폰트 서브셋 빌더: 쓰인 글리프만 뽑아 독립 실행용 `FONT` 바이너리($6000)로 DSK에 넣음. |
@@ -317,13 +320,27 @@ python unicode_server.py
 3. Apple II에서 `unicode.dsk`로 부팅합니다.
 4. `Ctrl+K`로 입력하기 전에 //e의 Caps Lock을 끕니다. 서버가 글자의 대소문자로 Shift 글자(ㄲ, Я, Σ…)를 구분합니다.
 
+#### ProDOS 하드디스크 (서버 없이):
+1. `python build_hdd.py --prodos ProDOS_2_4_3.po`로 `build/unicode_hdd.hdv`를 만듭니다([ProDOS 하드디스크](#-prodos-하드디스크-서버-없이-글꼴-전체) 참고).
+2. 하드디스크에 넣습니다(CFFA3000·Floppy Emu 카드, 또는 CiderPress·ADTPro). AppleWin에서는 **슬롯 7**을 하드디스크 컨트롤러로 하고 이미지를 HDD 1에 붙입니다.
+3. 부팅하면 `STARTUP`이 드라이버를 올리고 `FONT: UFONT (NO SERVER NEEDED)`를 보여 줍니다. 시리얼 카드와 서버가 있으면 `Ctrl+K`, 터미널 모드, `POKE 16387,0`에는 여전히 서버를 씁니다.
+
 ### 3단계: 데모 실행
 
 Applesoft 프롬프트 `]`에서 입력합니다:
 ```basic
 RUN DEMO
 ```
-Apple II 고해상도 화면에 한글, 한자, 다국어 글자가 매끄럽게 그려집니다.
+(하드디스크에서는 `RUN HDDEMO` 또는 `RUN JEMANG`.) Apple II 고해상도 화면에 한글, 한자, 다국어 글자가 매끄럽게 그려집니다.
+
+### 글리프를 어디서 가져오나
+
+| 구성 | `&` 문자열 | `Ctrl+K`, 터미널 모드 |
+| :--- | :--- | :--- |
+| DOS 3.3 `unicode.dsk` + 서버 | `$6000` 캐시(`build_font_dsk.py`가 넣은 글자). `POKE 24576,0`이면 모두 서버로(어떤 글자든, 옛한글, 컬러) | 서버 |
+| DOS 3.3 `unicode.dsk`, 서버 없음 | `$6000` 캐시만 | — |
+| ProDOS 하드디스크, 서버 없음 | `UFONT`에 있는 34,596자 전부 | — |
+| ProDOS 하드디스크 + 서버 | `UFONT`. `POKE 16387,0`이면 서버로 | 서버 |
 
 ---
 
@@ -367,6 +384,48 @@ DSK에 들어간 `FONT` 바이너리가 글리프 손상 없이 제대로 그려
 python verify_dsk_font.py
 ```
 - DSK에서 `FONT` 바이너리를 그대로 꺼내 Apple II HGR(280×192) 화면 캡처를 픽셀 단위로 만듭니다([`verified_standalone_jemang.png`](docs/images/verified_standalone_jemang.png), [`verified_standalone_demo.png`](docs/images/verified_standalone_demo.png)).
+
+---
+
+## 💽 ProDOS 하드디스크: 서버 없이 글꼴 전체
+
+`$6000` 캐시에는 프로그램이 쓰는 글자를 최대 255자까지만 담을 수 있습니다. 하드디스크가 있는 Apple II(CFFA3000, MicroDrive/Turbo, BOOTI, Floppy Emu, SCSI 카드 등 ProDOS 블록 장치)에서는 드라이버가 디스크의 글꼴 파일에서 모든 글리프를 읽어 그릴 수 있습니다. 어떤 프로그램에 치거나 붙여 넣은 한글 음절, 한자, 가나, 그리스어, 러시아어, 기호든 PC 연결 없이 나옵니다.
+
+![하드디스크 이미지로 부팅한 AppleWin에서 서버 없이 실행한 HDDEMO](docs/images/hdd_demo.png)
+
+### 1. 디스크 이미지 만들기
+```bash
+python build_hdd.py --prodos ProDOS_2_4_3.po                      # build/unicode_hdd.hdv, 32MB
+python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800k.po
+```
+`--prodos`에는 ProDOS 2.4.x 디스크([prodos8.com](https://prodos8.com) 또는 AppleWin 폴더)를 줍니다. 거기서 `PRODOS`, `BASIC.SYSTEM`과 부트 블록을 복사합니다. 이미지에 들어가는 파일:
+
+| 파일 | |
+| :--- | :--- |
+| `STARTUP` | 드라이버를 올리고 글꼴을 찾았는지 알려 줌 |
+| `UNICODE` | 드라이버(`UNICODE.BIN`, `$4000`) |
+| `UFONT` | 코드포인트 × 32 위치에 각 글자의 14×16 글리프. 2MB짜리 희소 파일이라 글리프가 있는 블록만 디스크를 차지함 |
+| `HDDEMO`, `JEMANG` | 예제 프로그램 |
+
+| `--size` | 글리프 | 디스크 사용량 |
+| :--- | :--- | :--- |
+| `32M` (65,535블록, 기본값) | 34,596자: ASCII, 라틴, 그리스어, 러시아어, 기호, 가나, 한글 호환 자모, 한글 음절 11,172자 전체, CJK 통합 한자 20,992자 | 1.1MB |
+| `800K` (1,600블록) | 13,238자: 위에서 한자를 뺀 것(20,992개 코드포인트에 흩어진 한자는 1,600블록 중 약 1,300블록이 필요) | 477KB |
+
+`--font`로 글꼴 목록을 고릅니다(기본값 `Galmuri14.ttf, NotoSerifCJK16.ttf`). CFFA3000과 Floppy Emu는 이미지 파일을 카드에 그대로 넣으면 되고, CFFA·MicroDrive 파티션이나 SCSI 디스크에는 CiderPress나 ADTPro로 씁니다. AppleWin에서는 **Configuration → Slot 7: Hard disk controller**로 하고 이미지를 HDD 1에 붙여 부팅합니다(명령줄로는 `-s7 hdc -h1 build\unicode_hdd.hdv`).
+
+### 2. 드라이버가 쓰는 방식
+- `CALL 16384` 때 드라이버가 ProDOS인지 확인합니다(BASIC.SYSTEM의 `$3D0` 벡터가 `$BExx`를 가리킴). 그러면 DOS 3.3의 `$AA55` 대신 `VECTIN`으로 입력을 받고, `UFONT`를 엽니다. `/`로 시작하지 않는 이름은 ProDOS 접두어에서, 접두어가 없으면 드라이버를 읽어 온 볼륨에서 찾습니다.
+- `&` 문자열은 `$6000` 캐시, 그다음 `UFONT`, 둘 다 없으면 서버 순서로 그립니다. 글자마다 코드포인트 × 32 위치로 가서 32바이트를 읽습니다. ProDOS가 글리프마다 블록 하나를 읽고, CF 카드나 하드디스크는 몇 ms면 됩니다. 파일은 문장의 첫 글리프에서 열고 문장 끝에서 닫으므로, BASIC의 `CLOSE`와 부딪히지 않습니다.
+- 오프라인 경로에서 `\K…\N` 밖의 ASCII와, 그 안의 1·2바이트 UTF-8(라틴, 그리스어, 러시아어)도 `UFONT`에서 그립니다.
+
+| 주소 | |
+| :--- | :--- |
+| `16387` (`$4003`) | `CALL 16384` 때 `UFONT`가 열리면 1. `POKE 16387,0`이면 `&` 문자열을 다시 서버로 보냄(옛한글 모아쓰기, 컬러 글자) |
+| `16388` (`$4004`) | 글꼴 파일 경로: 길이 한 바이트, 그 뒤 63자까지(기본값 `UFONT`). 바꾼 뒤에는 `CALL 16384`를 다시 함 |
+| `16452` (`$4044`) | 마지막으로 실패한 글꼴 파일 호출의 ProDOS 오류(예: 70 = 파일 없음), 없으면 0 |
+
+서버가 없으면 옛한글 음절(HarfBuzz 필요)과 컬러 글자 래스터화는 쓸 수 없고, `Ctrl+K` 조합도 서버가 해야 합니다. 서버를 연결하면 ProDOS에서도 DOS 3.3과 똑같이 `Ctrl+K`를 쓸 수 있습니다. `python tools/test_hdd_live.py [이미지]`는 AppleWin에서 이미지를 부팅해 두 예제를 실행하고, 끝나면 AppleWin 설정을 원래대로 돌려 놓습니다.
 
 ---
 

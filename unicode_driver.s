@@ -61,6 +61,31 @@ AUD_CHK         = $25
 HCOLOR_FLG      = $E4
 HGR_HAS_DRAWN   = $F9
 
+; ProDOS (BASIC.SYSTEM) entry points
+MLI             = $BF00
+VECTIN_LO       = $BE32         ; input routine of BASIC.SYSTEM
+VECTIN_HI       = $BE33
+MLI_ON_LINE     = $C5
+MLI_GET_PREFIX  = $C7
+MLI_OPEN        = $C8
+DEVNUM          = $BF30         ; last device ProDOS used
+MLI_READ        = $CA
+MLI_CLOSE       = $CC
+MLI_SET_MARK    = $CE
+HD_IOBUF        = $5C00         ; 1K page-aligned ProDOS file buffer, after the driver
+
+; Fixed addresses for BASIC. CALL 16384 still initialises the driver.
+    JMP INIT
+; $4003 (16387) is 1 to draw & strings from the font file on a ProDOS disk.
+; INIT sets it when the file opens. POKE 16387,0 sends them to the server.
+HD_FONT     .byte 0
+; $4004 (16388) is its pathname, a length byte then up to 63 characters
+HD_PATH     .byte 5
+            .asc "UFONT"
+            .dsb 58, 0
+; $4044 (16452) is the ProDOS error of the last failed font file call, 0 if none
+HD_ERR      .byte 0
+
 INIT
     LDA #$00
     STA ACIA_STAT
@@ -89,6 +114,30 @@ INIT
     LDA #>AMPERSAND_HANDLER
     STA AMP_VECTOR+2
 
+    ; Under ProDOS the $3D0 JMP of BASIC.SYSTEM goes to $BExx, under DOS 3.3
+    ; to $9Dxx. BASIC.SYSTEM keeps KSW for itself and takes the input
+    ; routine in VECTIN. $AA55 is inside BASIC.SYSTEM, so the DOS 3.3 vector
+    ; must not be written there.
+    LDA #$00
+    STA HD_FONT
+    LDA $03D2
+    CMP #$BE
+    BNE INIT_DOS33
+
+    LDA #<MY_KEYIN
+    STA VECTIN_LO
+    LDA #>MY_KEYIN
+    STA VECTIN_HI
+    ; Use the font file if it opens
+    JSR HD_FULL_PATH
+    JSR HD_OPEN
+    BCS INIT_HOOKED
+    JSR HD_CLOSE
+    LDA #$01
+    STA HD_FONT
+    JMP INIT_HOOKED
+
+INIT_DOS33
     LDA #<MY_KEYIN
     STA KSW_LO
     STA DOS_KSW_LO
@@ -96,19 +145,17 @@ INIT
     STA KSW_HI
     STA DOS_KSW_HI
 
+INIT_HOOKED
     JSR CLEAR_HGR
     LDA #$00
     STA HGR_HAS_DRAWN
     RTS
 
+; Applesoft calls this with TXTPTR on the character after the & and that
+; character in A. A string follows, or (& on its own) terminal mode.
 AMPERSAND_HANDLER
     CMP #'"'
     BEQ RUN_AMP_STRING
-
-    JSR CHRGET
-    CMP #'"'
-    BEQ RUN_AMP_STRING
-
     JMP RUN_TERMINAL_MODE
 
 RUN_AMP_STRING
@@ -120,13 +167,24 @@ RUN_AMP_STRING
     ; Sync CUR_COLOR from Applesoft HCOLOR ($E4) if user called HCOLOR=
     JSR SYNC_HCOLOR
 
-    ; Check if Cache is valid at $6000 ('H','G')
+    ; Draw on the Apple II itself when the $6000 cache ('H','G') is loaded
+    ; or the font file is on, otherwise ask the server
+    LDA #$00
+    STA CACHE_OK
     LDA $6000
     CMP #'H'
-    BNE NO_LOCAL_CACHE
+    BNE AMP_CHECK_HD
     LDA $6001
     CMP #'G'
-    BEQ RUN_OFFLINE_STRING
+    BNE AMP_CHECK_HD
+    INC CACHE_OK
+AMP_CHECK_HD
+    LDA HD_FONT
+    STA HD_ON
+    ORA CACHE_OK
+    BEQ NO_LOCAL_CACHE
+    JSR RUN_OFFLINE_STRING
+    JMP HD_CLOSE        ; the file is opened by the first glyph read
 
 NO_LOCAL_CACHE
     LDA #$87
@@ -221,7 +279,7 @@ FETCH_OFFLINE
 
     ; Normal ASCII character (Space or Latin)
     CMP #$20
-    BNE SKIP_CHAR
+    BNE OFFLINE_ASCII
     ; In Replace mode (DRAW_MODE == 0), clear 14x16 space cell
     LDA DRAW_MODE
     BNE SPACE_ADV_ONLY
@@ -243,6 +301,38 @@ SPACE_ADV_ONLY
     JSR SCROLL_HGR
 SKIP_CHAR
     JMP OFFLINE_LOOP
+
+OFFLINE_ASCII
+    ; Other ASCII outside \K is drawn from the font file when it is on (the
+    ; $6000 cache has no ASCII), and skipped otherwise as before
+    LDX HD_ON
+    BEQ SKIP_CHAR
+    STA KEY_0
+    LDA #$00
+    STA KEY_1
+    STA KEY_2
+    JSR DRAW_CACHED_GLYPH
+    JSR ADVANCE_CELL
+    JMP OFFLINE_LOOP
+
+; Move the cursor one 14x16 cell on, wrapping and scrolling at the edges.
+ADVANCE_CELL
+    LDA CUR_COL
+    CLC
+    ADC #2
+    STA CUR_COL
+    CMP #40
+    BCC AC_RET
+    LDA #0
+    STA CUR_COL
+    INC CUR_ROW
+    LDA CUR_ROW
+    CMP #12
+    BCC AC_RET
+    DEC CUR_ROW
+    JSR SCROLL_HGR
+AC_RET
+    RTS
 
 HANDLE_BRACKET_TAG
     ; Inspect inside [...] for [C-tag], [M-tag], [F-tag], etc.
@@ -757,54 +847,31 @@ HEX_SP_OK
     JMP HEX_CHAR_LOOP
 
 NOT_HEX_SPACE
-    ; Parse Byte 1
-    INC TXTPTR_LO
-    BNE HEX_ADV_3
-    INC TXTPTR_HI
-HEX_ADV_3
-    LDY #0
-    LDA (TXTPTR_LO),Y
-    JSR CHAR_TO_NIBBLE
-    ASL
-    ASL
-    ASL
-    ASL
-    STA TEMP_BYTE
-    INC TXTPTR_LO
-    BNE HEX_ADV_4
-    INC TXTPTR_HI
-HEX_ADV_4
-    LDY #0
-    LDA (TXTPTR_LO),Y
-    JSR CHAR_TO_NIBBLE
-    ORA TEMP_BYTE
+    ; The rest of the UTF-8 sequence. 1 byte for ASCII, 2 for Latin, Greek
+    ; and Cyrillic, 3 for Hangul, kana and Hanja. KEY_1 and KEY_2 stay 0
+    ; past its end.
+    LDA #$00
     STA KEY_1
-
-    ; Parse Byte 2
-    INC TXTPTR_LO
-    BNE HEX_ADV_5
-    INC TXTPTR_HI
-HEX_ADV_5
-    LDY #0
-    LDA (TXTPTR_LO),Y
-    JSR CHAR_TO_NIBBLE
-    ASL
-    ASL
-    ASL
-    ASL
-    STA TEMP_BYTE
-    INC TXTPTR_LO
-    BNE HEX_ADV_6
-    INC TXTPTR_HI
-HEX_ADV_6
-    LDY #0
-    LDA (TXTPTR_LO),Y
-    JSR CHAR_TO_NIBBLE
-    ORA TEMP_BYTE
     STA KEY_2
+    LDA KEY_0
+    BPL HEX_DRAW
+    JSR HEX_BYTE
+    STA KEY_1
+    LDA KEY_0
+    CMP #$E0
+    BCC HEX_DRAW
+    JSR HEX_BYTE
+    STA KEY_2
+    LDA KEY_0
+    CMP #$F0
+    BCC HEX_DRAW
+    JSR HEX_BYTE        ; 4 bytes are outside the BMP, the cell stays as it is
+    JMP HEX_ADVANCE
 
-    ; Draw glyph from cache
+HEX_DRAW
+    ; Draw glyph from cache or font file
     JSR DRAW_CACHED_GLYPH
+HEX_ADVANCE
 
     ; Advance cursor
     LDA CUR_COL
@@ -849,6 +916,30 @@ DONE_ROW_OK
 OFFLINE_RTS
     RTS
 
+; Next two hex digits of the string as a byte.
+HEX_BYTE
+    INC TXTPTR_LO
+    BNE HB_1
+    INC TXTPTR_HI
+HB_1
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    JSR CHAR_TO_NIBBLE
+    ASL
+    ASL
+    ASL
+    ASL
+    STA TEMP_BYTE
+    INC TXTPTR_LO
+    BNE HB_2
+    INC TXTPTR_HI
+HB_2
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    JSR CHAR_TO_NIBBLE
+    ORA TEMP_BYTE
+    RTS
+
 CHAR_TO_NIBBLE
     CMP #'0'
     BCC NIBBLE_ZERO
@@ -869,11 +960,14 @@ NIBBLE_ZERO
     LDA #0
     RTS
 
+; Draws the character in KEY_0..2 (UTF-8, unused bytes 0) at the cursor,
+; from the $6000 cache when it has it, else from the font file when that
+; is on. With neither, the cell is left as it is.
 DRAW_CACHED_GLYPH
+    LDA CACHE_OK
+    BEQ DCG_TRY_HD
     LDA $6002
-    BNE DCG_HAS_ITEMS
-    RTS
-DCG_HAS_ITEMS
+    BEQ DCG_TRY_HD
     STA SEARCH_CNT
 
     LDA #<$6004
@@ -905,6 +999,17 @@ NEXT_CACHE_SLOT
 CACHE_ADV_OK
     DEC SEARCH_CNT
     BNE SEARCH_CACHE_LOOP
+DCG_TRY_HD
+    LDA HD_ON
+    BEQ DCG_RET
+    JSR HD_READ_GLYPH
+    BCS DCG_RET
+    LDA #<HD_GLYPH
+    STA SRC_LO
+    LDA #>HD_GLYPH
+    STA SRC_HI
+    JMP RENDER_FROM_SRC
+DCG_RET
     RTS
 
 FOUND_CACHE_SLOT
@@ -916,6 +1021,7 @@ FOUND_CACHE_SLOT
     ADC #0
     STA SRC_HI
 
+RENDER_FROM_SRC
     LDA CUR_ROW
     ASL
     ASL
@@ -1096,6 +1202,173 @@ CACHE_NEXT_ROW
     JMP RENDER_CACHE_ROWS
 
 DRAW_GLYPH_RET
+    RTS
+
+; --- Font file on a ProDOS disk ---
+; The file (UFONT) holds the 14x16 glyph of every BMP code point, 32 bytes
+; as in the cache, at offset code point * 32. ProDOS reads blocks that were
+; never written in a sparse file as zeros, so the file takes only as much
+; disk as the glyphs in it. It is opened by the first glyph an & statement
+; draws from it and closed at the end of the statement, so a CLOSE in BASIC
+; never finds it open.
+
+; HD_FPATH = HD_PATH made absolute. BASIC.SYSTEM resolves partial names
+; itself and leaves the ProDOS prefix empty, and then the MLI refuses a
+; partial name (error $40). So it goes after the prefix if there is one,
+; else after the volume of the last device used, the disk the driver was
+; just loaded from.
+HD_FULL_PATH
+    LDA #$00
+    STA HD_FPATH
+    LDA HD_PATH+1
+    CMP #'/'
+    BEQ HFP_APPEND
+    JSR MLI
+    .byte MLI_GET_PREFIX
+    .word HD_PFX_PARMS
+    LDA HD_FPATH
+    BNE HFP_APPEND
+    LDA DEVNUM
+    STA HD_ONLINE_PARMS+1
+    JSR MLI
+    .byte MLI_ON_LINE
+    .word HD_ONLINE_PARMS
+    BCS HFP_APPEND
+    ; HD_FPATH+1 now holds the drive, slot and name length, the name after it
+    LDA HD_FPATH+1
+    AND #$0F
+    TAX
+    LDA #'/'
+    STA HD_FPATH+1
+    STA HD_FPATH+2,X
+    INX
+    INX
+    STX HD_FPATH
+HFP_APPEND
+    LDX HD_FPATH
+    LDY #$00
+HFP_COPY
+    CPY HD_PATH
+    BEQ HFP_DONE
+    LDA HD_PATH+1,Y
+    STA HD_FPATH+1,X
+    INX
+    INY
+    CPX #64
+    BCC HFP_COPY
+HFP_DONE
+    STX HD_FPATH
+    RTS
+
+; Opens HD_FPATH. Carry set if it does not open.
+HD_OPEN
+    JSR MLI
+    .byte MLI_OPEN
+    .word HD_OPEN_PARMS
+    BCC HO_OK
+    STA HD_ERR
+    RTS
+HO_OK
+    LDA HD_OPEN_REF
+    STA HD_REF
+    STA HD_MARK_PARMS+1
+    STA HD_READ_PARMS+1
+    STA HD_CLOSE_PARMS+1
+    CLC
+    RTS
+
+HD_CLOSE
+    LDA HD_REF
+    BEQ HC_RET
+    JSR MLI
+    .byte MLI_CLOSE
+    .word HD_CLOSE_PARMS
+    LDA #$00
+    STA HD_REF
+HC_RET
+    RTS
+
+; Reads the glyph of KEY_0..2 into HD_GLYPH. Carry set if it cannot.
+HD_READ_GLYPH
+    LDA HD_REF
+    BNE HR_OPEN
+    JSR HD_OPEN
+    BCC HR_OPEN
+    LDA #$00
+    STA HD_ON           ; no file, so stop trying for this & statement
+    SEC
+    RTS
+HR_OPEN
+    ; Code point from the UTF-8 bytes
+    LDA KEY_0
+    BMI HR_MULTI
+    STA CP_LO
+    LDA #$00
+    STA CP_HI
+    JMP HR_MARK
+HR_MULTI
+    CMP #$E0
+    BCS HR_THREE
+    AND #$1F
+    JSR CP_START
+    LDA KEY_1
+    JSR CP_APPEND6
+    JMP HR_MARK
+HR_THREE
+    AND #$0F
+    JSR CP_START
+    LDA KEY_1
+    JSR CP_APPEND6
+    LDA KEY_2
+    JSR CP_APPEND6
+HR_MARK
+    ; File position = code point * 32
+    LDA CP_LO
+    STA HD_MARK_POS
+    LDA CP_HI
+    STA HD_MARK_POS+1
+    LDA #$00
+    STA HD_MARK_POS+2
+    LDX #5
+HR_SHIFT
+    ASL HD_MARK_POS
+    ROL HD_MARK_POS+1
+    ROL HD_MARK_POS+2
+    DEX
+    BNE HR_SHIFT
+    JSR MLI
+    .byte MLI_SET_MARK
+    .word HD_MARK_PARMS
+    BCS HR_ERR
+    JSR MLI
+    .byte MLI_READ
+    .word HD_READ_PARMS
+    BCC HR_RET
+HR_ERR
+    STA HD_ERR
+    SEC
+HR_RET
+    RTS
+
+CP_START
+    STA CP_LO
+    LDA #$00
+    STA CP_HI
+    RTS
+
+; CP = CP << 6 | (A & $3F)
+CP_APPEND6
+    AND #$3F
+    PHA
+    LDX #6
+CPA_LOOP
+    ASL CP_LO
+    ROL CP_HI
+    DEX
+    BNE CPA_LOOP
+    PLA
+    ORA CP_LO
+    STA CP_LO
     RTS
 
 ; --- PC Streaming & Driver Core ---
@@ -1353,6 +1626,9 @@ RUN_TERMINAL_MODE
     STA ACIA_CTRL
     LDA #$0B
     STA ACIA_CMD
+    ; Tell the server, which clears the screen and takes the keys from now on
+    LDA #$AA
+    JSR SEND_BYTE
 
 TERM_LOOP
     LDA KBD
@@ -1360,7 +1636,7 @@ TERM_LOOP
     STA KBDSTRB
     AND #$7F
     CMP #$1B
-    BEQ EXIT_TERM
+    BEQ TERM_ESC
     PHA
 WAIT_TX_TERM
     LDA ACIA_STAT
@@ -1404,9 +1680,12 @@ TERM_SET_MODE
     STA DRAW_MODE
     JMP TERM_LOOP
 
+TERM_ESC
+    ; ESC leaves, and tells the server so it goes back to BASIC mode
+    JSR SEND_BYTE
 EXIT_TERM
+    ; TXTPTR is still at the end of the & statement
     STA TXTSET
-    JSR CHRGET
     RTS
 
 DRAW_ONE_GLYPH
@@ -1657,6 +1936,28 @@ IME_ESCS    .byte 0
 IME_OLDMODE .byte 0
 IME_LINE    .byte 0
 IME_SAVE    .dsb 1280, 0
+CACHE_OK    .byte 0             ; the $6000 cache is loaded (this & statement)
+HD_ON       .byte 0             ; draw from the font file (this & statement)
+HD_REF      .byte 0             ; its ProDOS reference number, 0 = closed
+CP_LO       .byte 0
+CP_HI       .byte 0
+HD_PFX_PARMS    .byte 1
+                .word HD_FPATH
+HD_ONLINE_PARMS .byte 2, 0
+                .word HD_FPATH+1
+HD_FPATH    .dsb 65, 0          ; length byte, then the absolute pathname
+HD_OPEN_PARMS   .byte 3
+                .word HD_FPATH
+                .word HD_IOBUF
+HD_OPEN_REF     .byte 0
+HD_MARK_PARMS   .byte 2, 0
+HD_MARK_POS     .byte 0, 0, 0
+HD_READ_PARMS   .byte 4, 0
+                .word HD_GLYPH
+                .word 32
+                .word 0
+HD_CLOSE_PARMS  .byte 1, 0
+HD_GLYPH    .dsb 32, 0
 
 HGR_LO
 .byte $00, $00, $00, $00, $00, $00, $00, $00, $80, $80, $80, $80, $80, $80, $80, $80

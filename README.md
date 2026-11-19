@@ -24,6 +24,7 @@ The original Apple II hardware is constrained by its 1970s character generator R
 4. **Hex-Safe Encoding Pipeline**: Prevents BASIC token collisions ($80–$EA) and `?SYNTAX ERROR` issues caused by Apple II 8-bit parsing conventions and Caps Lock states.
 5. **Interactive Full-Screen Terminal**: Provides a real-time 280×192 graphic console with interactive keyboard input, IME support, and automatic word wrapping.
 6. **Typing on the Apple II Keyboard**: `Ctrl+K` while writing BASIC opens an input line for 2-Bul-Sik Hangul with Hanja conversion, Japanese kana, Russian and Greek, composed the way the Windows IMEs do (see [Ctrl+K](#2-interactive-ctrlk-input-2-bul-sik-hanja-kana-russian-greek)).
+7. **Hard Disk Font for Real Hardware**: On a ProDOS hard disk the driver reads every glyph (Hangul, Hanja, kana, Greek, Cyrillic, symbols) from a font file, so a real Apple II shows Unicode with no PC connected (see [ProDOS Hard Disk](#-prodos-hard-disk-the-whole-font-no-server)).
 
 ---
 
@@ -203,10 +204,10 @@ Standard Apple II line input (`GETLN`) and Applesoft keyword parsing (`PARSE`) t
 - It remains completely unaffected by the Apple II `Caps Lock` state, quote delimiters, or carriage return filters.
 
 ### 4. Interactive Terminal Mode
-Entering `&` at the Applesoft prompt `]` drops directly into a full-screen interactive graphics terminal:
-- Supports 2-Bul-Sik Korean IME, Latin characters, and hotkeys.
-- Instant toggle between localized input and English with `Ctrl+K` or `` ` `` (backtick).
-- `ESC` returns safely back to Applesoft BASIC.
+Entering `&` on its own at the Applesoft prompt `]` drops into a full-screen graphics terminal, drawn by the server (DOS 3.3 or ProDOS):
+- 2-Bul-Sik Hangul composed as on the `Ctrl+K` line, Latin characters, and hotkeys.
+- Toggle between Hangul and English with `Ctrl+K` or `` ` `` (backtick).
+- `ESC` returns to Applesoft BASIC; the server keeps running and goes back to BASIC mode.
 
 ### 5. Old Hangul (Hunminjeongeum) Composed a Syllable to a Cell
 Old Hangul (arae-a ㆍ, obsolete jamo, bangjeom tone marks) has no precomposed codepoints: a syllable is a run of conjoining jamo (U+1100–11FF, U+A960–A97F, U+D7B0–D7FF). Drawn a codepoint at a time it comes out spelled apart. The server shapes each syllable with HarfBuzz using `NotoSerifCJK16.ttf`'s `ljmo/vjmo/tjmo` features and draws it into one 14×16 cell (`old_hangul.py`); a string containing old Hangul draws its modern syllables in the same typeface. Example: `10 & "\KEB8298EB9E8FEBA790E1848AE1869EEBAFB8\N"` shows `나랏말ᄊᆞ미` in five cells.
@@ -233,6 +234,8 @@ While the live font server streams unlimited Unicode glyphs dynamically, you can
 | **`old_hangul.py`** | Old Hangul (Hunminjeongeum) syllable composition with HarfBuzz, used by the server. |
 | **`apple_ime.py`** | `Ctrl+K` input engines besides 2-Bul-Sik (kana, Russian, Greek) and the Hanja lookup. |
 | **`hanja_table.txt`** | Hangul reading → Hanja candidates, built from Unihan by `tools/build_hanja_table.py`. |
+| **`build_hdd.py`** | Builds a bootable ProDOS hard-disk image with the whole font (`UFONT`) for drawing without the server. |
+| **`tools/prodos_image.py`** | ProDOS volume reader/writer (sparse files, up to 32 MB) and Applesoft tokenizer, used by `build_hdd.py`. |
 | **`unicode_server.exe`** | Standalone pre-compiled Windows executable (bundled with default CJK font). |
 | **`ac_tool.py`** | AppleCommander management wrapper & standalone DSK inspection CLI. |
 | **`build_font_dsk.py`** | Automated font subsetter: extracts used glyphs, bakes `FONT` binary ($6000) into DSK for standalone execution. |
@@ -317,13 +320,27 @@ python unicode_server.py
 3. Boot `unicode.dsk` on your Apple II.
 4. Turn Caps Lock off on the //e before typing with `Ctrl+K`: the server tells Shift letters (ㄲ, Я, Σ…) from the letter's case.
 
+#### Using a ProDOS Hard Disk (no server needed):
+1. `python build_hdd.py --prodos ProDOS_2_4_3.po` builds `build/unicode_hdd.hdv` (see [ProDOS Hard Disk](#-prodos-hard-disk-the-whole-font-no-server)).
+2. Put it on the hard disk (CFFA3000 / Floppy Emu card, or CiderPress / ADTPro), or in AppleWin set **Slot 7** to the hard disk controller with the image as HDD 1.
+3. Boot: `STARTUP` loads the driver and shows `FONT: UFONT (NO SERVER NEEDED)`. The serial card and server are still used if present, for `Ctrl+K`, terminal mode and `POKE 16387,0`.
+
 ### Step 3: Run the Demonstration
 
 At the Applesoft `]` prompt, type:
 ```basic
 RUN DEMO
 ```
-Watch the Apple II high-resolution screen seamlessly display high-density Korean, Hanja, and multilingual typographic scripts!
+(`RUN HDDEMO` or `RUN JEMANG` on the hard disk.) Watch the Apple II high-resolution screen seamlessly display high-density Korean, Hanja, and multilingual typographic scripts!
+
+### Where the glyphs come from
+
+| Setup | `&` strings | `Ctrl+K`, terminal mode |
+| :--- | :--- | :--- |
+| DOS 3.3 `unicode.dsk` + server | `$6000` cache (characters baked in by `build_font_dsk.py`); `POKE 24576,0` sends everything to the server (any character, old Hangul, colour) | Server |
+| DOS 3.3 `unicode.dsk`, no server | `$6000` cache only | — |
+| ProDOS hard disk, no server | `UFONT`: any of its 34,596 characters | — |
+| ProDOS hard disk + server | `UFONT`; `POKE 16387,0` sends them to the server | Server |
 
 ---
 
@@ -367,6 +384,48 @@ To mathematically verify that the baked `FONT` binary inside the DSK renders cor
 python verify_dsk_font.py
 ```
 - Extracts the raw binary `FONT` from the DSK image and renders pixel-perfect Apple II HGR (280×192) screen captures ([`verified_standalone_jemang.png`](docs/images/verified_standalone_jemang.png) and [`verified_standalone_demo.png`](docs/images/verified_standalone_demo.png)).
+
+---
+
+## 💽 ProDOS Hard Disk: the Whole Font, No Server
+
+The `$6000` cache holds at most 255 characters, the ones a program uses. On an Apple II with a hard disk (CFFA3000, MicroDrive/Turbo, BOOTI, Floppy Emu, a SCSI card, any ProDOS block device), the driver can read every glyph from a font file on the disk instead: any Hangul syllable, Hanja, kana, Greek, Cyrillic or symbol, typed or pasted into any program, with no PC connected.
+
+![HDDEMO in AppleWin, booted from the hard-disk image, no server running](docs/images/hdd_demo.png)
+
+### 1. Building the disk image
+```bash
+python build_hdd.py --prodos ProDOS_2_4_3.po                      # build/unicode_hdd.hdv, 32 MB
+python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800k.po
+```
+`--prodos` is a ProDOS 2.4.x disk (from [prodos8.com](https://prodos8.com) or AppleWin's folder): `PRODOS`, `BASIC.SYSTEM` and its boot blocks are copied from it. The image holds:
+
+| File | |
+| :--- | :--- |
+| `STARTUP` | Loads the driver and says whether the font was found |
+| `UNICODE` | The driver (`UNICODE.BIN`, `$4000`) |
+| `UFONT` | The 14×16 glyph of each code point at offset code point × 32. A sparse 2 MB file: only blocks with glyphs take disk space |
+| `HDDEMO`, `JEMANG` | Demo programs |
+
+| `--size` | Glyphs | Disk used |
+| :--- | :--- | :--- |
+| `32M` (65,535 blocks, default) | 34,596: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs | 1.1 MB |
+| `800K` (1,600 blocks) | 13,238: the same without Hanja (spread over 20,992 code points they need about 1,300 blocks) | 477 KB |
+
+`--font` picks the font chain (default `Galmuri14.ttf, NotoSerifCJK16.ttf`). A CFFA3000 or Floppy Emu takes the image file as it is on its card; for a CFFA or MicroDrive partition or a SCSI disk, write it with CiderPress or ADTPro. In AppleWin: **Configuration → Slot 7: Hard disk controller**, attach the image as HDD 1, boot (`-s7 hdc -h1 build\unicode_hdd.hdv` on the command line).
+
+### 2. How the driver uses it
+- At `CALL 16384` the driver checks for ProDOS (BASIC.SYSTEM's `$3D0` vector points to `$BExx`). It then takes input through `VECTIN` instead of DOS 3.3's `$AA55`, and opens `UFONT`. A name without `/` is looked up from the ProDOS prefix, or else from the volume the driver was loaded from.
+- An `&` string is drawn from the `$6000` cache first, then from `UFONT`, then (if neither is there) by the server. For each character the driver seeks to code point × 32 and reads 32 bytes; ProDOS reads one block per glyph, which a CF card or hard disk returns in milliseconds. The file is opened by the first glyph of a statement and closed at its end, so `CLOSE` in BASIC never finds it open.
+- The offline path also draws ASCII outside `\K…\N` and 1- and 2-byte UTF-8 inside it (Latin, Greek, Cyrillic) from `UFONT`.
+
+| Address | |
+| :--- | :--- |
+| `16387` (`$4003`) | 1 when `UFONT` opened at `CALL 16384`. `POKE 16387,0` sends `&` strings to the server again (old Hangul composition, coloured text) |
+| `16388` (`$4004`) | The font file's pathname: a length byte, then up to 63 characters (default `UFONT`); `CALL 16384` again after changing it |
+| `16452` (`$4044`) | The ProDOS error of the last failed font-file call (e.g. 70 = file not found), 0 if none |
+
+Without the server, old Hangul syllables (which need HarfBuzz) and the coloured-text rasteriser are not available, and `Ctrl+K` needs the server to compose. With the server connected, `Ctrl+K` works under ProDOS as under DOS 3.3. `python tools/test_hdd_live.py [image]` boots an image in AppleWin, runs both demos and puts AppleWin's settings back afterwards.
 
 ---
 
