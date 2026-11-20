@@ -21,7 +21,8 @@ ROOT_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
 from test_applewin_live import (APPLEWIN_EXE, DSK_PATH, WM_CHAR, WM_KEYDOWN,  # noqa: E402
-                                WM_KEYUP, capture_hwnd, find_applewin_hwnd, user32)
+                                WM_KEYUP, capture_hwnd, require_no_applewin, user32,
+                                wait_applewin_window)
 
 OUT_DIR = tempfile.gettempdir()
 
@@ -127,10 +128,7 @@ def shot(hwnd, name):
 
 
 def main():
-    subprocess.run(["powershell", "-Command",
-                    "Stop-Process -Name AppleWin -Force -ErrorAction SilentlyContinue"],
-                   capture_output=True)
-    time.sleep(0.5)
+    require_no_applewin()
     # Slot 7 empty, so a hard disk left there (AppleWin keeps slot settings
     # given on its command line) does not boot instead of the floppy; the
     # settings are put back afterwards
@@ -148,9 +146,7 @@ def main():
                            cwd=ROOT_DIR, env=env)
     try:
         time.sleep(3.0)
-        hwnds = find_applewin_hwnd()
-        assert hwnds, "AppleWin window not found"
-        hwnd = hwnds[0][0]
+        hwnd = wait_applewin_window(aw.pid)
 
         type_command(hwnd, "POKE 24576,0\r")   # the cache off: & goes to the server
         type_command(hwnd, '10 & "')

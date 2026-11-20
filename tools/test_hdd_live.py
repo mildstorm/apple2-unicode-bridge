@@ -19,7 +19,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
-from test_applewin_live import APPLEWIN_EXE, capture_hwnd, find_applewin_hwnd  # noqa: E402
+from test_applewin_live import APPLEWIN_EXE, capture_hwnd, require_no_applewin, wait_applewin_window  # noqa: E402
 from test_ime_live import type_command, wait_ready  # noqa: E402
 
 REG_KEY = r"HKCU\Software\AppleWin"
@@ -31,10 +31,8 @@ def shot(hwnd, name):
     print(f"  * {path}")
 
 
-def run_demos():
-    hwnds = find_applewin_hwnd()
-    assert hwnds, "AppleWin window not found"
-    hwnd = hwnds[0][0]
+def run_demos(pid):
+    hwnd = wait_applewin_window(pid)
     wait_ready(hwnd)
     shot(hwnd, "startup")
     type_command(hwnd, "RUN HDDEMO\r")
@@ -47,17 +45,14 @@ def run_demos():
 
 def main():
     image = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT_DIR, "unicode.hdv")
-    subprocess.run(["powershell", "-Command",
-                    "Stop-Process -Name AppleWin -Force -ErrorAction SilentlyContinue"],
-                   capture_output=True)
-    time.sleep(0.5)
+    require_no_applewin()
     saved = os.path.join(tempfile.gettempdir(), "applewin_settings.reg")
     subprocess.run(["reg", "export", REG_KEY, saved, "/y"], capture_output=True, check=True)
     aw = subprocess.Popen([APPLEWIN_EXE, "-s7", "hdc", "-h1", os.path.abspath(image)],
                           cwd=os.path.dirname(APPLEWIN_EXE))
     try:
         time.sleep(3.0)
-        run_demos()
+        run_demos(aw.pid)
     finally:
         aw.terminate()
         aw.wait(10)

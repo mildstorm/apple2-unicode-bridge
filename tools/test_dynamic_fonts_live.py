@@ -10,11 +10,15 @@ Hands-on Live Verification for Dynamic Font Slot Management:
    - Modifying slot 1: /font-add 1 DOSMyungjo.ttf
    - Printing with [F:1] (now rendered in DOS Myungjo)
    - /font-del title
-2. Injects 'FONTTEST' into unicode.dsk
+2. Injects 'FONTTEST' into a temporary copy of unicode.dsk (the repository's
+   disk is left as it is)
 3. Bakes the font table via build_font_dsk.py
-4. Boots AppleWin with unicode.dsk and executes 'RUN FONTTEST'
-5. Captures real AppleWin live screen and validates non-zero Green phosphor pixels
-6. Tests live serial server mode (unicode_server.py) with dynamic /font-add and [F:...]
+4. Boots AppleWin with that copy and executes 'RUN FONTTEST' (an AppleWin
+   already running is not ended; the test stops and asks for it to be closed)
+5. Checks that the screen changed from the prompt to the HGR drawing, and puts
+   AppleWin's settings back
+6. Tests live serial server mode (unicode_server.py) with dynamic /font-add and
+   [F:...], reading the server's answers a whole packet at a time
 """
 
 import os
@@ -110,6 +114,29 @@ def find_applewin_hwnd():
     user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
     return hwnd_target
 
+def packets_complete(buf):
+    """True when buf holds whole server packets ending with CMD_DONE ($00).
+    A glyph's own bytes may be 0, and the server's $88 mode packet may arrive
+    in a segment of its own ($88 $00 when the mode is 0), so a buffer that
+    merely ends in 0 is not the end of the answer."""
+    lengths = {0x81: 35, 0x85: 19, 0x82: 1, 0x83: 1, 0x84: 1, 0x88: 2}
+    i = 0
+    while i < len(buf):
+        cmd = buf[i]
+        if cmd == 0x00:
+            return True
+        if cmd == 0x86:
+            if i + 1 >= len(buf):
+                return False
+            n = 2 + buf[i + 1]
+        else:
+            n = lengths.get(cmd)
+            if n is None:
+                raise AssertionError(f"unknown server packet ${cmd:02X} at {i}: {bytes(buf).hex()}")
+        i += n
+    return False
+
+
 def recv_until_done(sock, timeout=4.0):
     received = bytearray()
     start_time = time.time()
@@ -119,11 +146,10 @@ def recv_until_done(sock, timeout=4.0):
             data = sock.recv(4096)
             if data:
                 received.extend(data)
-                if received.endswith(b'\x00'):
+                if packets_complete(received):
                     break
         except socket.timeout:
             pass
-        time.sleep(0.02)
     return bytes(received)
 
 def test_live_serial_mode():
@@ -195,76 +221,50 @@ def test_live_serial_mode():
     print("  -> Live TCP Server Dynamic Font Test: PASSED!")
 
 def test_live_dsk_and_applewin():
-    print("\n--- [STEP 2] Injecting 'FONTTEST' into unicode.dsk & Baking Font Cache ---")
-    # Stop any running AppleWin first
-    subprocess.run(["powershell", "-Command", "Stop-Process -Name AppleWin -Force -ErrorAction SilentlyContinue"], capture_output=True)
-    time.sleep(0.5)
+    print("\n--- [STEP 2] Injecting 'FONTTEST' into a copy of unicode.dsk & Baking Font Cache ---")
+    import shutil
+    import tempfile
+    sys.path.insert(0, os.path.join(ROOT_DIR, "tools"))
+    from test_applewin_live import require_no_applewin, run_and_check, wait_applewin_window
+    from test_hdd_live import REG_KEY
+    # An AppleWin already running (the user's) is not ended
+    require_no_applewin()
 
-    # 1. Build FONTTEST basic program
+    # 1. Build FONTTEST basic program, on a copy: the repository's disk stays as it is
+    work = tempfile.mkdtemp(prefix="fonttest_")
+    dsk = os.path.join(work, "unicode.dsk")
+    shutil.copyfile(DSK_PATH, dsk)
     lines = make_fonttest_program()
     prog_bytes = build_applesoft_program(lines)
-    put_file(DSK_PATH, "FONTTEST", "A", 0x0801, prog_bytes)
-    print("  * 'FONTTEST' injected into unicode.dsk.")
+    put_file(dsk, "FONTTEST", "A", 0x0801, prog_bytes)
+    print(f"  * 'FONTTEST' injected into {dsk}.")
 
     # 2. Bake font table using build_font_dsk
-    ok = process_dsk(DSK_PATH)
+    ok = process_dsk(dsk)
     assert ok, "process_dsk failed!"
     print("  * DSK font cache table baked successfully.")
 
-    # 3. Launch AppleWin and run FONTTEST
+    # 3. Launch AppleWin and run FONTTEST (slot 7 empty so the floppy boots;
+    #    AppleWin's settings are put back afterwards)
     print("\n--- [STEP 3] Launching AppleWin and Executing 'RUN FONTTEST' ---")
-    proc = subprocess.Popen([APPLEWIN_EXE, "-d1", DSK_PATH], cwd=os.path.dirname(APPLEWIN_EXE))
-    
-    hwnd = None
+    saved = os.path.join(work, "applewin_settings.reg")
+    subprocess.run(["reg", "export", REG_KEY, saved, "/y"], capture_output=True, check=True)
+    proc = subprocess.Popen([APPLEWIN_EXE, "-s7", "empty", "-d1", dsk], cwd=os.path.dirname(APPLEWIN_EXE))
     try:
-        print("  * Waiting 5 seconds for Apple II DOS 3.3 boot...")
-        time.sleep(5.0)
-
-        hwnds = find_applewin_hwnd()
-        assert hwnds, "Failed to find running AppleWin window!"
-        hwnd, title = hwnds[0]
-        print(f"  * Found AppleWin Window: hwnd={hwnd:#x}, Title='{title}'")
-
-        user32.SetForegroundWindow(hwnd)
-        time.sleep(0.5)
-
-        cmd = "RUN FONTTEST\r"
-        print(f"  * Typing '{cmd.strip()}' into AppleWin...")
-        for ch in cmd:
-            if ch == '\r':
-                user32.PostMessageW(hwnd, WM_KEYDOWN, VK_RETURN, 0)
-                user32.PostMessageW(hwnd, WM_CHAR, 0x0D, 0)
-                user32.PostMessageW(hwnd, WM_KEYUP, VK_RETURN, 0)
-            else:
-                user32.PostMessageW(hwnd, WM_KEYDOWN, ord(ch), 0)
-                user32.PostMessageW(hwnd, WM_CHAR, ord(ch), 0)
-                user32.PostMessageW(hwnd, WM_KEYUP, ord(ch), 0)
-            time.sleep(0.08)
-
-        print("  * Waiting 3.5 seconds for FONTTEST execution on HGR screen...")
-        time.sleep(3.5)
-
-        # 4. Capture screenshot
-        img = capture_hwnd(hwnd)
-        out_png = os.path.join(ROOT_DIR, "docs", "images", "actual_fonttest_live.png")
-        os.makedirs(os.path.dirname(out_png), exist_ok=True)
-        img.save(out_png)
-        print(f"  * Real screenshot saved to: {out_png} ({os.path.getsize(out_png)} bytes)")
-
-        # Verify pixels (Active text pixels on HGR screen)
-        w, h = img.size
-        screen_area = img.crop((50, 50, w - 50, h - 50))
-        pixels = list(screen_area.getdata())
-        active_pixels = sum(1 for p in pixels if isinstance(p, tuple) and len(p) >= 3 and sum(p[:3]) > 80)
-        print(f"  * Detected active text pixels on HGR screen: {active_pixels}")
-        assert active_pixels > 1000, f"Screen does not show expected HGR text! (active_pixels={active_pixels})"
+        hwnd = wait_applewin_window(proc.pid)
+        # The screen must change from the prompt to the HGR drawing
+        run_and_check(hwnd, "FONTTEST", work)
         print("  -> Live AppleWin Standalone Execution: PASSED!")
-
     finally:
-        if hwnd:
-            user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
-            time.sleep(1.0)
-        subprocess.run(["powershell", "-Command", "Stop-Process -Name AppleWin -Force -ErrorAction SilentlyContinue"], capture_output=True)
+        proc.terminate()
+        try:
+            proc.wait(10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        time.sleep(1.0)
+        subprocess.run(["reg", "delete", REG_KEY, "/f"], capture_output=True)
+        subprocess.run(["reg", "import", saved], capture_output=True, check=True)
+        print("  * AppleWin settings restored")
 
 def main():
     print("=" * 70)

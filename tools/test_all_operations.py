@@ -11,8 +11,10 @@ Tests:
 """
 
 import os
+import shutil
 import sys
 import socket
+import tempfile
 import threading
 import time
 
@@ -22,7 +24,7 @@ sys.path.insert(0, ROOT_DIR)
 
 from unicode_server import HangulRasterizer, HangulTerminalServer, MULTI_FONT_SPECS
 from ac_tool import list_dsk_files, get_raw_file, export_text_file
-from build_font_dsk import process_dsk
+from build_font_dsk import extract_glyph_uses, font_tag_hash, process_dsk
 from verify_dsk_font import verify_and_render
 
 def test_1_font_loading():
@@ -48,13 +50,17 @@ def test_1_font_loading():
 
 def test_2_dsk_baking_and_verification():
     print("\n[TEST 2] Standalone DSK Baking & HGR Rendering Verification")
-    dsk_path = os.path.join(ROOT_DIR, "unicode.dsk")
-    assert os.path.exists(dsk_path), "unicode.dsk does not exist!"
-    
+    src_dsk = os.path.join(ROOT_DIR, "unicode.dsk")
+    assert os.path.exists(src_dsk), "unicode.dsk does not exist!"
+    # Bake and render a copy: the repository's disk and docs/images stay as they are
+    work = tempfile.mkdtemp(prefix="unicode_test2_")
+    dsk_path = os.path.join(work, "unicode.dsk")
+    shutil.copyfile(src_dsk, dsk_path)
+
     # 1. Bake font table
     ok = process_dsk(dsk_path)
     assert ok, "process_dsk failed!"
-    
+
     # 2. Check catalog
     file_list = list_dsk_files(dsk_path)
     filenames = [name for ftype, name in file_list]
@@ -63,20 +69,49 @@ def test_2_dsk_baking_and_verification():
     assert 'FONT' in filenames, "FONT binary missing from DSK!"
     assert 'DEMO' in filenames, "DEMO program missing from DSK!"
     assert 'COLORDEMO' in filenames, "COLORDEMO program missing from DSK!"
-    
-    # 3. Verify HGR simulation
-    v_ok = verify_and_render(dsk_path)
-    assert v_ok, "verify_and_render failed!"
-    
-    demo_png = os.path.join(ROOT_DIR, "docs", "images", "verified_standalone_demo.png")
-    jemang_png = os.path.join(ROOT_DIR, "docs", "images", "verified_standalone_jemang.png")
-    colordemo_png = os.path.join(ROOT_DIR, "docs", "images", "verified_standalone_colordemo.png")
-    assert os.path.exists(demo_png) and os.path.getsize(demo_png) > 1000, "demo PNG not generated!"
-    assert os.path.exists(jemang_png) and os.path.getsize(jemang_png) > 1000, "jemang PNG not generated!"
-    assert os.path.exists(colordemo_png) and os.path.getsize(colordemo_png) > 1000, "colordemo PNG not generated!"
-    print(f"  * verified_standalone_demo.png: {os.path.getsize(demo_png)} bytes")
-    print(f"  * verified_standalone_jemang.png: {os.path.getsize(jemang_png)} bytes")
-    print(f"  * verified_standalone_colordemo.png: {os.path.getsize(colordemo_png)} bytes")
+
+    # 3. Every glyph a program asks for is in the cache under its own font
+    #    tag, and the driver's lookup (first match on the character and the
+    #    tag, else the untagged entry) finds that one: a character used in two
+    #    fonts is drawn in each, not in whichever was baked last.
+    raw = os.path.join(work, "FONT.bin")
+    get_raw_file(dsk_path, "FONT", raw)
+    data = open(raw, "rb").read()
+    table = data[data.find(b"HG"):]
+    entries = [bytes(table[4 + i * 36:4 + i * 36 + 36]) for i in range(table[2])]
+    first = {}
+    for e in entries:
+        first.setdefault(e[:4], e[4:])
+
+    def driver_lookup(ch, tag):
+        key = ch.encode("utf-8").ljust(4, b"\0")
+        for e in entries:
+            if e[:3] == key[:3] and (e[3] == key[3] or (key[3] == 0 and e[3] == tag)):
+                return e[4:]
+        return None
+
+    checked = 0
+    for prog in ("DEMO", "COLORDEMO", "JEMANG", "FONTTEST"):
+        if prog not in filenames:
+            continue
+        for (ch, tag), _font in extract_glyph_uses(export_text_file(dsk_path, prog)).items():
+            want_key = ch.encode("utf-8")
+            want_key = want_key.ljust(4, b"\0") if len(want_key) == 4 else want_key.ljust(3, b"\0") + bytes([tag])
+            assert want_key in first, f"{prog}: no glyph for {ch!r} under font tag {tag}"
+            assert driver_lookup(ch, tag) == first[want_key], f"{prog}: {ch!r} under tag {tag} finds another glyph"
+            checked += 1
+    tag9, tag_neo = font_tag_hash("galmuri9"), font_tag_hash("neodgm")
+    assert driver_lookup("모", tag9) != driver_lookup("모", tag_neo), \
+        "'모' (DEMO Galmuri9, COLORDEMO neodgm) is drawn the same in both fonts"
+    print(f"  * {checked} glyph uses found under their own font tags ({len(entries)} cache entries)")
+
+    # 4. Verify HGR simulation
+    screens = verify_and_render(dsk_path, out_dir=work)
+    assert screens and set(screens) == {"JEMANG", "DEMO", "COLORDEMO"}, "verify_and_render failed!"
+    for prog, screen in screens.items():
+        lit = sum(1 for p in screen.getdata() if p != (10, 20, 12))
+        assert lit > 1000, f"{prog} drew almost nothing ({lit} pixels)"
+        print(f"  * {prog}: {lit} pixels drawn ({work})")
     print("  -> TEST 2 PASSED!")
 
 def test_3_live_tcp_server_protocol():
@@ -124,17 +159,12 @@ def test_3_live_tcp_server_protocol():
     print("  * Sending 0x87 string drawing command to server...")
     c_applewin.sendall(bytes([0x87]) + test_str.encode('ascii'))
     
-    # Read response packets from server (should receive CMD_DRAW_GLYPH packets and CMD_DONE 0x00)
-    received = bytearray()
-    start_time = time.time()
-    while time.time() - start_time < 3:
-        data = c_applewin.recv(4096)
-        if data:
-            received.extend(data)
-            if received.endswith(b'\x00'): # CMD_DONE
-                break
-        time.sleep(0.05)
-    
+    # Read response packets from server (should receive CMD_DRAW_GLYPH packets
+    # and CMD_DONE 0x00), whole packets: a trailing 0 may be inside one
+    sys.path.insert(0, SCRIPT_DIR)
+    from test_dynamic_fonts_live import recv_until_done
+    received = recv_until_done(c_applewin, timeout=3.0)
+
     print(f"  * Received {len(received)} bytes response from font server.")
     # Check that received bytes contain CMD_DRAW_GLYPH (0x81)
     assert 0x81 in received, "Server did not send CMD_DRAW_GLYPH packet!"

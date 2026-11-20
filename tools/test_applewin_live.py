@@ -2,11 +2,18 @@
 # -*- coding: utf-8 -*-
 """
 Test Live Execution in AppleWin:
-1. Boots unicode.dsk in AppleWin.exe
-2. Sends 'RUN DEMO' command
-3. Captures the live emulator window screenshot via PrintWindow
-4. Verifies rendered HGR pixels
-5. Closes AppleWin cleanly
+1. Boots unicode.dsk in AppleWin.exe (slot 7 empty, so a hard disk left in
+   AppleWin's settings does not boot instead)
+2. Types 'RUN DEMO', then 'RUN COLORDEMO', each once the Apple II is idle
+3. Checks that each one changed the screen from the text prompt to HGR
+   drawing (most of the screen differs), not merely that it is not blank
+4. Saves the screenshots as live_*.png in the temp directory (--out-dir)
+5. Closes the AppleWin it started and puts AppleWin's settings back
+
+An AppleWin that is already running is left alone: the test stops and asks
+for it to be closed rather than ending it.
+
+    python tools/test_applewin_live.py [--out-dir DIR]
 """
 
 import os
@@ -14,9 +21,10 @@ import sys
 import time
 import struct
 import subprocess
+import tempfile
 import ctypes
 from ctypes import wintypes
-from PIL import Image
+from PIL import Image, ImageChops
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPT_DIR)
@@ -32,10 +40,17 @@ WM_KEYUP = 0x0101
 VK_RETURN = 0x0D
 WM_CLOSE = 0x0010
 
-def find_applewin_hwnd():
+def find_applewin_hwnd(pid=None):
+    """Visible windows of AppleWin: those of process `pid` when given (the
+    one a test started), else any whose title says Apple."""
     hwnd_target = []
     def enum_cb(hwnd, lparam):
         if user32.IsWindowVisible(hwnd):
+            if pid is not None:
+                owner = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+                if owner.value != pid:
+                    return True
             length = user32.GetWindowTextLengthW(hwnd)
             if length > 0:
                 buf = ctypes.create_unicode_buffer(length + 1)
@@ -44,10 +59,30 @@ def find_applewin_hwnd():
                 if "Apple" in title or "AppleWin" in title:
                     hwnd_target.append((hwnd, title))
         return True
-    
+
     WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
     user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
     return hwnd_target
+
+
+def wait_applewin_window(pid, timeout=15.0):
+    """The main window of the AppleWin process `pid`, once it is up."""
+    start = time.time()
+    while time.time() - start < timeout:
+        hwnds = find_applewin_hwnd(pid)
+        if hwnds:
+            return hwnds[0][0]
+        time.sleep(0.3)
+    raise AssertionError("AppleWin window not found")
+
+
+def require_no_applewin():
+    """Live tests drive an AppleWin of their own. One already running (the
+    user's) is not ended: stop here instead."""
+    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq AppleWin.exe", "/NH"],
+                         capture_output=True, text=True).stdout
+    if "AppleWin.exe" in out:
+        raise SystemExit("AppleWin is already running. Close it first; this test starts its own.")
 
 def capture_hwnd(hwnd):
     rect = wintypes.RECT()
@@ -75,105 +110,66 @@ def capture_hwnd(hwnd):
     img = Image.frombuffer("RGBA", (w, h), bytes(buf), "raw", "BGRA", 0, 1)
     return img
 
+def run_and_check(hwnd, program, out_dir):
+    """Types RUN <program> at the idle prompt and checks that the screen
+    then differs from the prompt over a large part of it: the program
+    switched to HGR and drew. The boot text alone (the old check, any 500
+    lit pixels) passes even when the command never arrived."""
+    from test_ime_live import _screen, type_command, wait_ready
+    wait_ready(hwnd)
+    before = _screen(hwnd)
+    type_command(hwnd, f"RUN {program}\r")
+    wait_ready(hwnd)
+    after = _screen(hwnd)
+    shot = capture_hwnd(hwnd)
+    out_png = os.path.join(out_dir, f"live_{program.lower()}.png")
+    shot.save(out_png)
+    changed = ImageChops.difference(before, after).histogram()[255]
+    lit = after.histogram()[255]
+    print(f"  * {program}: {changed} pixels changed, {lit} lit -> {out_png}")
+    assert changed > 2000 and lit > 2000, (
+        f"RUN {program} did not draw (changed={changed}, lit={lit}); see {out_png}")
+
+
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description="Boots unicode.dsk in AppleWin and runs DEMO and COLORDEMO")
+    ap.add_argument("--out-dir", default=tempfile.gettempdir(),
+                    help="where the screenshots go (default: the temp directory)")
+    args = ap.parse_args(sys.argv[1:] if __name__ == "__main__" else [])
+
     print("=" * 60)
     print(" Live AppleWin Emulator Verification Test")
     print("=" * 60)
-    
+
     assert os.path.exists(APPLEWIN_EXE), f"AppleWin not found at {APPLEWIN_EXE}"
     assert os.path.exists(DSK_PATH), f"DSK not found at {DSK_PATH}"
-    
-    # Ensure any old AppleWin is closed
-    subprocess.run(["powershell", "-Command", "Stop-Process -Name AppleWin -Force -ErrorAction SilentlyContinue"], capture_output=True)
-    time.sleep(0.5)
+    require_no_applewin()
+
+    sys.path.insert(0, SCRIPT_DIR)
+    from test_hdd_live import REG_KEY
+    saved = os.path.join(tempfile.gettempdir(), "applewin_settings_live.reg")
+    subprocess.run(["reg", "export", REG_KEY, saved, "/y"], capture_output=True, check=True)
 
     print(f"  * Launching AppleWin with {DSK_PATH}...")
-    proc = subprocess.Popen([APPLEWIN_EXE, "-d1", DSK_PATH], cwd=os.path.dirname(APPLEWIN_EXE))
-    
-    hwnd = None
+    proc = subprocess.Popen([APPLEWIN_EXE, "-s7", "empty", "-d1", DSK_PATH],
+                            cwd=os.path.dirname(APPLEWIN_EXE))
     try:
-        # Wait for emulator to start & boot HELLO
-        print("  * Waiting 5 seconds for Apple II DOS 3.3 boot and HELLO program...")
-        time.sleep(5.0)
-
-        hwnds = find_applewin_hwnd()
-        assert hwnds, "Failed to find running AppleWin window!"
-        hwnd, title = hwnds[0]
-        print(f"  * Found AppleWin Window: hwnd={hwnd:#x}, Title='{title}'")
-
-        # Bring window to foreground
-        user32.SetForegroundWindow(hwnd)
-        time.sleep(0.5)
-
-        # Send 'RUN DEMO' + Enter
-        cmd = "RUN DEMO\r"
-        print(f"  * Typing '{cmd.strip()}' into AppleWin...")
-        for ch in cmd:
-            if ch == '\r':
-                user32.PostMessageW(hwnd, WM_KEYDOWN, VK_RETURN, 0)
-                user32.PostMessageW(hwnd, WM_CHAR, 0x0D, 0)
-                user32.PostMessageW(hwnd, WM_KEYUP, VK_RETURN, 0)
-            else:
-                user32.PostMessageW(hwnd, WM_KEYDOWN, ord(ch), 0)
-                user32.PostMessageW(hwnd, WM_CHAR, ord(ch), 0)
-                user32.PostMessageW(hwnd, WM_KEYUP, ord(ch), 0)
-            time.sleep(0.08)
-
-        # Wait for DEMO to render HGR graphics
-        print("  * Waiting 3.5 seconds for DEMO multi-font rendering on HGR Page 1...")
-        time.sleep(3.5)
-
-        # Capture window
-        print("  * Capturing live emulator window via PrintWindow...")
-        screenshot = capture_hwnd(hwnd)
-        out_png = os.path.join(ROOT_DIR, "docs", "images", "actual_applewin_live_demo.png")
-        os.makedirs(os.path.dirname(out_png), exist_ok=True)
-        screenshot.save(out_png)
-        print(f"  * Live screenshot saved to: {out_png} ({os.path.getsize(out_png)} bytes)")
-
-        # Verify pixels inside AppleWin screen area
-        w, h = screenshot.size
-        # Sample the center display region
-        pixels = list(screenshot.crop((w//4, h//4, 3*w//4, 3*h//4)).getdata())
-        non_black = sum(1 for p in pixels if (isinstance(p, int) and p > 30) or (isinstance(p, tuple) and sum(p[:3]) > 60))
-        print(f"  * Verified display activity: {non_black} / {len(pixels)} non-black pixels detected.")
-        assert non_black > 500, f"Screen appears empty or blank! (non_black={non_black})"
-        
-        # Test COLORDEMO (Color & Overlay mode demonstration)
-        cmd_color = "RUN COLORDEMO\r"
-        print(f"  * Typing '{cmd_color.strip()}' into AppleWin...")
-        for ch in cmd_color:
-            if ch == '\r':
-                user32.PostMessageW(hwnd, WM_KEYDOWN, VK_RETURN, 0)
-                user32.PostMessageW(hwnd, WM_CHAR, 0x0D, 0)
-                user32.PostMessageW(hwnd, WM_KEYUP, VK_RETURN, 0)
-            else:
-                user32.PostMessageW(hwnd, WM_KEYDOWN, ord(ch), 0)
-                user32.PostMessageW(hwnd, WM_CHAR, ord(ch), 0)
-                user32.PostMessageW(hwnd, WM_KEYUP, ord(ch), 0)
-            time.sleep(0.08)
-
-        print("  * Waiting 3.5 seconds for COLORDEMO rendering on HGR Page 1...")
-        time.sleep(3.5)
-
-        screenshot_color = capture_hwnd(hwnd)
-        out_color_png = os.path.join(ROOT_DIR, "docs", "images", "actual_applewin_live_colordemo.png")
-        screenshot_color.save(out_color_png)
-        print(f"  * Live screenshot saved to: {out_color_png} ({os.path.getsize(out_color_png)} bytes)")
-
-        pixels_col = list(screenshot_color.crop((w//4, h//4, 3*w//4, 3*h//4)).getdata())
-        non_black_col = sum(1 for p in pixels_col if (isinstance(p, int) and p > 30) or (isinstance(p, tuple) and sum(p[:3]) > 60))
-        print(f"  * Verified COLORDEMO activity: {non_black_col} / {len(pixels_col)} non-black pixels detected.")
-        assert non_black_col > 500, f"Screen appears empty or blank! (non_black_col={non_black_col})"
-
+        hwnd = wait_applewin_window(proc.pid)
+        run_and_check(hwnd, "DEMO", args.out_dir)
+        run_and_check(hwnd, "COLORDEMO", args.out_dir)
         print("\n[SUCCESS] AppleWin live boot, multi-font DEMO, and COLORDEMO execution verified successfully!")
-
     finally:
-        if hwnd:
-            print("  * Closing AppleWin emulator...")
-            user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
-            time.sleep(1.0)
-        subprocess.run(["powershell", "-Command", "Stop-Process -Name AppleWin -Force -ErrorAction SilentlyContinue"], capture_output=True)
+        print("  * Closing the AppleWin this test started...")
+        proc.terminate()
+        try:
+            proc.wait(10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        time.sleep(1.0)
+        subprocess.run(["reg", "delete", REG_KEY, "/f"], capture_output=True)
+        subprocess.run(["reg", "import", saved], capture_output=True, check=True)
+        print("  * AppleWin settings restored")
 
 if __name__ == "__main__":
     main()
