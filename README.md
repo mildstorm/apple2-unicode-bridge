@@ -383,9 +383,9 @@ RUN DEMO
 
 What can be drawn depends on where the glyphs come from:
 
-- **ProDOS hard disk (`UFONT`, no server)**: the fixed ranges below, 89,743 characters in all, baked by `build_hdd.py` from `Galmuri14.ttf` and then `NotoSerifCJK16.ttf` (`--font`). A code point that neither font has is left blank.
+- **ProDOS hard disk (`UFONT`, no server)**: the fixed ranges below, 89,743 characters in all, baked by `build_hdd.py` from `Galmuri14.ttf` and `NotoSerifCJK16.ttf` (`--font`) and, after them, the fonts of the PC that builds the image (on Windows Gulim, Batang, Malgun Gothic, Microsoft JhengHei, SimSun, MingLiU-ExtB; Extension B's 42,711 are MingLiU-ExtB's, of which NotoSerifCJK16 has 2,057), so an image built on another PC can cover a different set. A code point that none of them has is left blank.
 - **PC server (`unicode_server.py`)**: any character the PC's fonts have, through its fallback chain (the bundled fonts, then the Windows CJK fonts it finds, `NotoSerifCJK16.ttf`, Segoe UI Symbol for emoji and symbols, Tahoma for Arabic, Hebrew and Thai). It also composes old Hangul a syllable to a cell and puts Arabic and Hebrew in display order (see 5 and 5b).
-- **DOS 3.3 floppy (`$6000` cache)**: only the characters the disk's programs use, up to 255 entries (one per font a character is used in); anything else goes to the server.
+- **DOS 3.3 floppy (`$6000` cache)**: only the characters the disk's programs use, up to 255 entries (one per font a character is used in). With the cache loaded every `&` string is drawn from it and a character it lacks is left blank; `POKE 24576,0` sends the strings to the server instead.
 
 `UFONT` in `unicode.hdv` (32M), counted from the image:
 
@@ -424,7 +424,7 @@ What can be drawn depends on where the glyphs come from:
 
 - **Hanja outside the BMP** (Extension B and later) are written as 4-byte UTF-8 in `\K…\N` and drawn from `UFONT` like the rest (`10 & "\KF0A08080\N"` → 𠀀). Extensions E to I are nearly empty because the fonts on the building PC do not have them; the server draws them only if a PC font does.
 - **`Ctrl+J`** offers the 8,646 Hanja in `UFONT` that have a Korean reading, 57 of them outside the BMP.
-- **Not in `UFONT`**: emoji, Arabic, Hebrew, Thai, Devanagari and other scripts outside the table. The server draws them.
+- **Not in `UFONT`**: emoji, Arabic, Hebrew, Thai, Devanagari and other scripts outside the table. Without the server they are left blank; `POKE 16387,0` has the server draw the `&` strings, these included.
 - **Cell size**: a full-width character is 14×16 pixels (20 columns by 12 rows), so Hanja with many strokes, common in the later extensions, lose detail.
 - **`800K`** (`--size 800K`, 1,600 blocks): the same table without the Hanja rows (Extension A, Unified Ideographs, the compatibility ideographs and everything outside the BMP), 14,539 characters.
 
