@@ -389,6 +389,7 @@ If you want to run multilingual Apple II programs **completely standalone from f
 - **Overcoming 140 KB Floppy Capacity**: Storing the full Unicode Hangul syllabus (11,172 characters ≈ 357 KB) or tens of thousands of Hanja characters exceeds the entire capacity of a 140 KB DOS 3.3 floppy disk.
 - **Extracting Only Used Glyphs**: By scanning your BASIC source and extracting only the unique characters actually referenced (for instance, the 77 unique Hanja and Hangul characters across *Je-mang-mae-ga* and `DEMO`), the entire font table is compressed down to **only 2.7 KB** (occupying just 12 disk sectors).
 - **Fast Local Rendering in RAM**: On boot, the `HELLO` startup script executes `BLOAD FONT`, placing the font table at `$6000`. The 6502 driver immediately detects the cache and draws glyphs directly from local RAM with zero communication latency.
+- **One glyph per font a character is used in**: a character that programs draw in several fonts (`모` is Galmuri9 in `DEMO` and Neo둥근모 in `COLORDEMO`) is baked once for each `[F:name]` tag it appears under, the tag's hash in the entry's 4th key byte. The driver picks the entry of the statement's last `[F:...]` tag (each `&` starts with none), else the untagged one, so every line keeps its own font without the server. The cache holds up to 255 entries; `unicode.dsk` uses 184 for its 137 characters. Only `[F:...]` tags select a font offline; `\F...\` and `/font` choose the font a character is baked in.
 
 ### 2. Building & Injecting the Font Table
 Run `build_font_dsk.py` to scan BASIC programs and automatically package the font binary into the disk:
@@ -485,7 +486,7 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 | `16452` (`$4044`) | The ProDOS error of the last failed font-file call (e.g. 70 = file not found), 0 if none |
 | `16453` (`$4045`) | What `Ctrl+K` composes with: 0 on the Apple II (default, needs `UFONT`), 1 the PC server over the SSC |
 
-Under ProDOS the driver takes its 1 KB file buffer from BASIC.SYSTEM (`GETBUFR`), so HIMEM drops from 38400 to 37376 (`$9200`). The driver itself fills `$4000`–`$5EFF`.
+Under ProDOS the driver takes its 1 KB file buffer from BASIC.SYSTEM (`GETBUFR`), so HIMEM drops from 38400 to 37376 (`$9200`). The driver itself fills `$4000`–`$5FFE` (HGR page 2), right up to the `$6000` font cache.
 
 Without the server, old Hangul is drawn one jamo to a cell (composing a syllable into one cell needs the server's HarfBuzz, `POKE 16387,0`), colour is the driver's own (the server's 7-column colour rasteriser draws it finer), and emoji, Arabic and Hebrew are not in `UFONT` (the server draws them, see 5b). `Ctrl+K` composes on the Apple II (2-Bul-Sik and Hanja; see below), or through the server with `POKE 16453,1`. `python tools/test_hdd_live.py [image]` boots an image in AppleWin, runs both demos and puts AppleWin's settings back afterwards.
 
@@ -522,7 +523,7 @@ Checked in AppleWin and on the STM32F769I-DISCO //e; not yet on a real Apple II.
 - **Shift letters** (ㄲ ㄸ ㅃ ㅆ ㅉ ㅒ ㅖ) need Caps Lock off. With Caps Lock on, 2-Bul-Sik still works (the driver tells from the letter's case), but every letter counts as unshifted. A II+, with no lower case, cannot type them.
 - **Old Hangul** without the server is drawn a jamo to a cell (ᄊ ㆍ), and cannot be typed onboard.
 - **Not in `UFONT`, left blank**: emoji, Arabic, Hebrew and other scripts it does not cover, and the Hanja of Extensions C to I that no font on the building PC has (the server draws from the same PC fonts). `Ctrl+J` lists every Hanja with a Korean reading that `UFONT` has, 57 of them outside the BMP.
-- **Memory**: the driver fills `$4000`–`$5EFF`, and under ProDOS its 1 KB file buffer lowers HIMEM to 37376 (`$9200`). A BASIC program and its variables must stay below `$2000` (HGR page 1) as before.
+- **Memory**: the driver fills `$4000`–`$5FFE`, and under ProDOS its 1 KB file buffer lowers HIMEM to 37376 (`$9200`). A BASIC program and its variables must stay below `$2000` (HGR page 1) as before.
 - **Colour tags** (`[C:…]`, `/color`) stay in effect for later `&` strings until changed.
 - `POKE 16453,1` hands `Ctrl+K` to the server, `POKE 16453,0` back; `POKE 16387,0` draws `&` strings through the server, `POKE 16387,1` from `UFONT` again.
 
@@ -920,4 +921,4 @@ Please feel free to open an issue or submit a Pull Request!
   - `Sam3KRFont.ttf`, `DOSGothic.ttf`, `DOSMyungjo.ttf`: [MIT License](fonts/README.md) by Damheo Lee.
   - `NotoSerifCJK16.ttf`: [SIL Open Font License 1.1](https://scripts.sil.org/OFL) by Google / Adobe.
 
-> 💡 **Developer Note**: Automated end-to-end regression tests can be executed via `python tools/test_all_operations.py`.
+> 💡 **Developer Note**: Automated end-to-end regression tests can be executed via `python tools/test_all_operations.py`. It bakes and renders a copy of `unicode.dsk` in the temp directory, checks that every glyph a program uses is in the cache under its own font tag, and (with AppleWin installed) runs `DEMO` and `COLORDEMO` in AppleWin and checks that each one drew. The live AppleWin tests (`test_applewin_live.py`, `test_hdd_live.py`, `test_ime_live.py`, `test_dynamic_fonts_live.py`) start an AppleWin of their own and put its settings back; if AppleWin is already running they stop and ask for it to be closed instead of ending it.
