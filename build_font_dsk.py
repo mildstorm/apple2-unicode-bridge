@@ -119,6 +119,95 @@ def extract_font_tagged_characters(text, default_font=None):
 
     return char_font_map
 
+def font_tag_hash(name):
+    """The byte the driver keys a font tag's glyphs with (unicode_driver.s
+    PARSE_TAG_FONT): over the name after the colon, h = rol8(h ^ (c | $20)),
+    from 0. A name that hashes to 0 shares the untagged glyphs."""
+    h = 0
+    for c in name.encode("latin-1", errors="replace"):
+        x = h ^ (c | 0x20)
+        h = ((x << 1) | (x >> 7)) & 0xFF
+    return h
+
+
+def extract_glyph_uses(text, default_font=None):
+    """
+    What the $6000 cache must hold for a program: {(char, tag hash): font}.
+
+    The driver draws a character from the entry whose 4th key byte is the hash
+    of the statement's last [F:name] tag (reset by each &), else from the
+    untagged one (hash 0). So a character used in two fonts gets one entry for
+    each tag it appears under. The font is the one the server would use there
+    (a [F:...] or \\F...\\ tag, else the /font default); None means the default
+    rasterizer. Tags the driver does not read (\\F...\\) leave the hash as it is.
+    """
+    expanded = []
+    i = 0
+    while i < len(text):
+        if text[i:i+2].upper() == r'\K':
+            end = text.upper().find(r'\N', i + 2)
+            if end != -1:
+                try:
+                    expanded.append(bytes.fromhex(text[i+2:end]).decode('utf-8', errors='ignore'))
+                    i = end + 2
+                    continue
+                except ValueError:
+                    pass
+        expanded.append(text[i])
+        i += 1
+
+    uses = {}
+    current_default = default_font
+    for line in "".join(expanded).splitlines():
+        trimmed = line.strip()
+        low = trimmed.lower()
+        if '&' in trimmed and ('/font ' in low or '/f ' in low):
+            m = re.search(r'/(?:font|f)\s+([A-Za-z0-9_.\-]+)', trimmed, re.IGNORECASE)
+            if m:
+                current_default = m.group(1).strip()
+        if '&' in trimmed and ('/font-add ' in low or '/alias ' in low):
+            m = re.search(r'/(?:font-add|alias)\s+([A-Za-z0-9_.\-]+)\s+([A-Za-z0-9_.\-]+)', trimmed, re.IGNORECASE)
+            if m:
+                font_add(m.group(1).strip(), m.group(2).strip())
+        if '&' in trimmed and ('/font-del ' in low or '/font-remove ' in low or '/unalias ' in low):
+            m = re.search(r'/(?:font-del|font-remove|unalias)\s+([A-Za-z0-9_.\-]+)', trimmed, re.IGNORECASE)
+            if m:
+                font_del(m.group(1).strip())
+        if '&' in trimmed and '/font-clear' in low:
+            font_clear()
+
+        tag, font = 0, None
+        j = 0
+        while j < len(line):
+            ch = line[j]
+            if ch == '&':
+                tag, font = 0, None
+            elif ch == '[' and line[j+1:j+2].lower() in ('f', 'c', 'm'):
+                end = line.find(']', j)
+                if end != -1:
+                    inner = line[j+1:end]
+                    if inner[:1].lower() == 'f':
+                        name = inner.split(':', 1)[1] if ':' in inner else ''
+                        tag, font = font_tag_hash(name), (name.strip() or None)
+                    j = end + 1
+                    continue
+            elif ch == '\\' and line[j+1:j+2].upper() in ('F', 'C', 'M'):
+                end = line.find('\\', j + 2)
+                if end != -1:
+                    if line[j+1].upper() == 'F':
+                        font = line[j+2:end].lstrip(':').strip() or None
+                    j = end + 1
+                    continue
+            elif ord(ch) > 127:
+                want = font or current_default
+                key = (ch, tag)
+                if key in uses and uses[key] != want:
+                    print(f"[경고] '{ch}' 이(가) 같은 글꼴 태그 아래 두 글꼴({uses[key]}, {want})로 쓰여 뒤의 것을 씁니다.")
+                uses[key] = want
+            j += 1
+    return uses
+
+
 MULTI_FONT_SPECS = [
     {
         'chars': "안녕하세요애플투",
@@ -185,7 +274,7 @@ MULTI_FONT_SPECS = [
     },
 ]
 
-def build_font_table(chars, rasterizer, char_font_map=None):
+def build_font_table(chars, rasterizer, char_font_map=None, uses=None):
     """
     Builds the Apple II $6000 cache table format:
     Offset 0: 'H' ($48)
@@ -193,12 +282,24 @@ def build_font_table(chars, rasterizer, char_font_map=None):
     Offset 2: Count N (1 byte, max 255)
     Offset 3: $00 (Reserved)
     Offset 4..: N * 36 bytes:
-        [Byte 0..3]: UTF-8 encoding of the character, $00 past its end
+        [Byte 0..3]: UTF-8 encoding of the character, $00 past its end. For a
+                     character of up to 3 bytes, byte 3 may instead be the
+                     font_tag_hash of the [F:name] it is drawn under
         [Byte 4..35]: 32 bytes 14x16 bitmap glyph
+
+    uses ({(char, tag hash): font}, from extract_glyph_uses) gives one entry
+    per character and font tag, tagged entries first: the driver takes the
+    first entry that matches the character and either its 4th byte or the
+    current tag. Without it, one entry per character of chars.
     """
-    if len(chars) > 255:
-        print(f"[경고] 사용된 글자 수({len(chars)})가 255자를 초과하여 255자로 제한합니다.")
-        chars = chars[:255]
+    if uses is not None:
+        entries = sorted(uses.items(), key=lambda kv: (kv[0][1] == 0, kv[0][0], kv[0][1]))
+        entries = [(ch, tag, font) for (ch, tag), font in entries]
+    else:
+        entries = [(ch, 0, (char_font_map or {}).get(ch)) for ch in chars]
+    if len(entries) > 255:
+        print(f"[경고] 글리프 수({len(entries)})가 255개를 초과하여 255개로 제한합니다.")
+        entries = entries[:255]
 
     char_rasterizer_map = {}
     fonts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
@@ -223,19 +324,22 @@ def build_font_table(chars, rasterizer, char_font_map=None):
     buf = bytearray()
     buf.append(ord('H'))
     buf.append(ord('G'))
-    buf.append(len(chars))
+    buf.append(len(entries))
     buf.append(0x00)
 
-    for ch in chars:
+    for ch, tag, font in entries:
         utf8_bytes = ch.encode('utf-8')
-        # The UTF-8 bytes, 0 past the end (4 for a character outside the BMP)
+        # The UTF-8 bytes, 0 past the end (4 for a character outside the BMP);
+        # a shorter one carries its font tag's hash in the 4th byte
         key = bytearray(4)
         for i in range(min(4, len(utf8_bytes))):
             key[i] = utf8_bytes[i]
-        
+        if len(utf8_bytes) < 4:
+            key[3] = tag
+
         target_r = None
-        if char_font_map and ch in char_font_map and char_font_map[ch]:
-            target_r = get_font_rasterizer(char_font_map[ch], rasterizer)
+        if font:
+            target_r = get_font_rasterizer(font, rasterizer)
         elif ch in char_rasterizer_map:
             target_r, _ = char_rasterizer_map[ch]
         else:
@@ -293,17 +397,20 @@ def process_dsk(dsk_path, specific_programs=None, custom_ac=None, font_path=None
 
     print(f"  * 대상 BASIC 프로그램: {', '.join(target_programs)}")
 
-    all_chars_map = {}
+    all_uses = {}
     for prog in target_programs:
         content = export_text_file(dsk_path, prog, custom_ac=custom_ac)
-        prog_char_map = extract_font_tagged_characters(content, default_font=font_path)
-        if prog_char_map:
-            chars_found = list(prog_char_map.keys())
+        prog_uses = extract_glyph_uses(content, default_font=font_path)
+        if prog_uses:
+            chars_found = sorted({ch for ch, _ in prog_uses})
             print(f"  - '{prog}': {len(chars_found)}글자 발견 -> {''.join(chars_found[:15])}{'...' if len(chars_found) > 15 else ''}")
-            all_chars_map.update(prog_char_map)
+            for key, font in prog_uses.items():
+                if key in all_uses and all_uses[key] != font:
+                    print(f"[경고] '{key[0]}' 이(가) 같은 글꼴 태그 아래 두 글꼴({all_uses[key]}, {font})로 쓰여 '{prog}'의 것을 씁니다.")
+                all_uses[key] = font
 
-    chars_list = sorted(list(all_chars_map.keys()))
-    print(f"\n[2/4] 총 {len(chars_list)}개의 고유 한글/漢字 글리프 추출 완료:")
+    chars_list = sorted({ch for ch, _ in all_uses})
+    print(f"\n[2/4] 총 {len(chars_list)}개의 고유 한글/漢字 글자, 글꼴 태그별 글리프 {len(all_uses)}개 추출 완료:")
     print(f"  글자 목록: {''.join(chars_list)}")
 
     if not chars_list:
@@ -312,7 +419,7 @@ def process_dsk(dsk_path, specific_programs=None, custom_ac=None, font_path=None
 
     print(f"\n[3/4] PC TrueType 폰트로 14x16 비트맵 글리프 래스터라이징 중...")
     rasterizer = HangulRasterizer(font_path=font_path, font_size=size, y_offset=y_offset, box_center=box_center, force_vector=force_vector)
-    font_bytes = build_font_table(chars_list, rasterizer, char_font_map=all_chars_map)
+    font_bytes = build_font_table(chars_list, rasterizer, uses=all_uses)
     print(f"  * 생성된 FONT 바이너리 크기: {len(font_bytes)} 바이트 (메모리 로드 주소: $6000)")
 
     print(f"\n[4/4] DSK 이미지에 'FONT' 파일 주입 및 부팅 스크립트(HELLO) 패치 중...")

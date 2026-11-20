@@ -196,6 +196,7 @@ AMP_DRAW
     ; or the font file is on, otherwise ask the server
     LDA #$00
     STA CACHE_OK
+    STA FONT_TAG        ; no font tag seen yet in this & statement
     LDA $6000
     CMP #'H'
     BNE AMP_CHECK_HD
@@ -376,6 +377,8 @@ BRK_ADV_1
     BEQ PARSE_TAG_COLOR
     CMP #'m'
     BEQ PARSE_TAG_MODE
+    CMP #'f'
+    BEQ PARSE_TAG_FONT
 SKIP_TO_BRACKET_END
     LDY #0
     LDA (TXTPTR_LO),Y
@@ -394,6 +397,36 @@ GOTO_OFFLINE_DONE_2
 
 GOTO_OFFLINE_LOOP_2
     JMP OFFLINE_LOOP
+
+; A font tag ([F, colon, name]) picks the glyph a program's font asked for.
+; The $6000 cache keeps a character once per font it is used in, the name's
+; hash in the 4th key byte (font_tag_hash in build_font_dsk.py, h = rol8(h ^
+; (c | $20)) over the name from 0). A name that hashes to 0 is the untagged
+; glyph.
+PARSE_TAG_FONT
+PTF_NEXT
+    INC TXTPTR_LO
+    BNE PTF_1
+    INC TXTPTR_HI
+PTF_1
+    LDY #0
+    LDA (TXTPTR_LO),Y
+    BEQ GOTO_OFFLINE_DONE_2
+    CMP #'"'
+    BEQ GOTO_OFFLINE_DONE_2
+    CMP #']'
+    BEQ GOTO_OFFLINE_LOOP_2
+    CMP #58             ; the colon - the name follows
+    BNE PTF_HASH
+    STY FONT_TAG
+    BEQ PTF_NEXT        ; always (Z from the CMP)
+PTF_HASH
+    ORA #$20
+    EOR FONT_TAG
+    ASL
+    ADC #0              ; ASL left bit 0 clear, so this never carries
+    STA FONT_TAG
+    BCC PTF_NEXT        ; always
 
 PARSE_TAG_COLOR
     ; Advance until colon
@@ -1004,6 +1037,12 @@ SEARCH_CACHE_LOOP
     INY
     LDA (CACHE_PTR_LO),Y
     CMP KEY_3
+    BEQ FOUND_CACHE_SLOT
+    ; a character of up to 3 bytes also matches its glyph in the current
+    ; font tag; build_font_dsk.py puts those entries ahead of untagged ones
+    LDX KEY_3
+    BNE NEXT_CACHE_SLOT
+    CMP FONT_TAG
     BEQ FOUND_CACHE_SLOT
 
 NEXT_CACHE_SLOT
@@ -3265,6 +3304,7 @@ CP_LO       .byte 0
 CP_HI       .byte 0
 CP_PL       .byte 0             ; bits 16-20, for a glyph outside the BMP
 KEY_3       .byte 0             ; 4th UTF-8 byte (0 for shorter ones)
+FONT_TAG    .byte 0             ; hash of the last font tag (this & statement)
 HD_PFX_PARMS    .byte 1
                 .word HD_FPATH
 HD_ONLINE_PARMS .byte 2, 0

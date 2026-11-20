@@ -13,8 +13,9 @@ import re
 import argparse
 from PIL import Image, ImageDraw
 from ac_tool import get_raw_file, export_text_file
+from build_font_dsk import font_tag_hash
 
-def verify_and_render(dsk_file="unicode.dsk", custom_ac=None):
+def verify_and_render(dsk_file="unicode.dsk", custom_ac=None, out_dir="docs/images"):
     temp_extracted = f"_extracted_FONT_{os.getpid()}.bin"
     try:
         # 1. Extract 'FONT' binary directly from DSK using get_raw_file (-g)
@@ -33,13 +34,35 @@ def verify_and_render(dsk_file="unicode.dsk", custom_ac=None):
         count = font_table[2]
         print(f"[검증 1] DSK 내 'FONT' 파일 확인 성공: Magic={magic.decode()}, 글자 수={count}자, 총 크기={len(font_table)} 바이트")
 
-        # Parse cache into dictionary: UTF-8 3-byte key -> 32-byte bitmap
+        # Parse cache into dictionary: 4-byte key -> 32-byte bitmap. The key is
+        # the UTF-8 bytes, 0 past the end; for a character of up to 3 bytes the
+        # 4th byte may be the font tag's hash (build_font_dsk.font_tag_hash).
+        # The driver takes the first match, so keep the first of each key.
         glyph_cache = {}
         for i in range(count):
             offset = 4 + i * 36
-            key = bytes(font_table[offset:offset+3])
+            key = bytes(font_table[offset:offset+4])
             glyph = bytes(font_table[offset+4:offset+36])
-            glyph_cache[key] = glyph
+            glyph_cache.setdefault(key, glyph)
+
+        def utf8_len(lead):
+            return 1 if lead < 0x80 else 2 if lead < 0xE0 else 3 if lead < 0xF0 else 4
+
+        def font_tag_before(line, pos):
+            # the last [F:name] of the & statement up to pos, as the driver reads it
+            stmt = line[line.rfind('&', 0, pos) + 1:pos]
+            tag = 0
+            for m_tag in re.finditer(r'\[[Ff][^\]:]*(?::([^\]]*))?\]', stmt):
+                tag = font_tag_hash(m_tag.group(1) or "")
+            return tag
+
+        def lookup(seq, tag):
+            # as the driver's DRAW_CACHED_GLYPH: the character in the current
+            # tag's font, else its untagged entry
+            key = bytes(seq) + bytes(4 - len(seq))
+            if len(seq) < 4 and tag and key[:3] + bytes([tag]) in glyph_cache:
+                return glyph_cache[key[:3] + bytes([tag])]
+            return glyph_cache.get(key)
 
         print(f"[검증 2] 캐시 테이블 파싱 완료: {len(glyph_cache)}개 글리프 로드됨.")
 
@@ -128,16 +151,17 @@ def verify_and_render(dsk_file="unicode.dsk", custom_ac=None):
 
                     hex_str = m.group(1)
                     raw_bytes = bytes.fromhex(hex_str)
+                    tag = font_tag_before(line, m.start())
                     c_idx = 0
                     while c_idx < len(raw_bytes):
                         if raw_bytes[c_idx] == 0x20:
                             cur_col += 1
                             c_idx += 1
                             continue
-                        key = raw_bytes[c_idx:c_idx+3]
-                        c_idx += 3
-                        if key in glyph_cache:
-                            glyph = glyph_cache[key]
+                        n = utf8_len(raw_bytes[c_idx])
+                        glyph = lookup(raw_bytes[c_idx:c_idx+n], tag)
+                        c_idx += n
+                        if glyph is not None:
                             # If replace mode, clear 14x16 box
                             if draw_mode == 0:
                                 draw_buffer.rectangle([cur_col * 14, cur_row * 16, cur_col * 14 + 13, cur_row * 16 + 15], fill=(10, 20, 12))
@@ -226,11 +250,14 @@ def verify_and_render(dsk_file="unicode.dsk", custom_ac=None):
             os.makedirs(os.path.dirname(output_png) or ".", exist_ok=True)
             bezel.save(output_png)
             print(f"[검증 성공] '{prog_name}' 렌더링 완료: {output_png} (글자 비트맵 픽셀 수: {nonzero})")
+            return color_screen
 
-        render_program_to_hgr("JEMANG", "docs/images/verified_standalone_jemang.png")
-        render_program_to_hgr("DEMO", "docs/images/verified_standalone_demo.png")
-        render_program_to_hgr("COLORDEMO", "docs/images/verified_standalone_colordemo.png")
-        return True
+        # The 280x192 screens by program, for tests to look at
+        screens = {}
+        for prog in ("JEMANG", "DEMO", "COLORDEMO"):
+            screens[prog] = render_program_to_hgr(
+                prog, os.path.join(out_dir, f"verified_standalone_{prog.lower()}.png"))
+        return screens
     finally:
         if os.path.exists(temp_extracted):
             os.remove(temp_extracted)
@@ -239,6 +266,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Verify Standalone Font Rendering from DSK's FONT binary")
     parser.add_argument("--dsk", default="unicode.dsk", help="Path to DSK file (default: unicode.dsk)")
     parser.add_argument("--ac-jar", default=None, help="Explicit path to AppleCommander JAR file")
+    parser.add_argument("--out-dir", default="docs/images", help="Where to write the PNGs (default: docs/images)")
     args = parser.parse_args()
 
-    verify_and_render(dsk_file=args.dsk, custom_ac=args.ac_jar)
+    verify_and_render(dsk_file=args.dsk, custom_ac=args.ac_jar, out_dir=args.out_dir)
