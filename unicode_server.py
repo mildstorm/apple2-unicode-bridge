@@ -1222,6 +1222,9 @@ class AppleIme:
         if b == 0x1B:
             return self.finish("")
         if b == 0x0D:
+            # Return commits what is pending, as Ctrl+K / Ctrl+L do: a last
+            # n becomes ん (nihon -> にほん), as the Microsoft IME takes it
+            self.commit()
             return self.finish(self.text())
         if b in (0x08, 0x7F):
             eng = self.engine

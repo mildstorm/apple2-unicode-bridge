@@ -108,6 +108,8 @@ LINE_CASES = [
     ("{L}{L}{L}{L}Kalhm;era", "Καλημέρα"),
     ("{L}{L}{L}{L}{L}rk", "가"),        # the cycle comes back to 한
     ("{L}kan{L}{L}{L}{L}rk", "かん가"),  # switching commits the pending n
+    ("{L}nihon", "にほん"),             # Return commits it too (README: nihon -> にほん)
+    ("{L}{L}nihon", "ニホン"),
     ("dkssud{J}{J}3", "안" + apple_ime.hanja_candidates("녕")[2]),  # one page: {J} wraps
     ("Eha{J}", "똠"),                  # no Hanja read 똠: the key does nothing
 ]
