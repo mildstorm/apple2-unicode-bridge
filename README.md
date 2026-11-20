@@ -379,6 +379,55 @@ RUN DEMO
 | ProDOS hard disk + server | `UFONT`; `POKE 16387,0` sends them to the server | `Ctrl+K` onboard; `POKE 16453,1` the server. Terminal mode: server |
 | No disk of fonts, no serial card | `& "/TAPE"` loads a cache through the cassette input ([Cassette Input](#-cassette-input-the-font-cache-without-a-serial-card-or-disk)) | — |
 
+### Characters drawn (Unicode ranges)
+
+What can be drawn depends on where the glyphs come from:
+
+- **ProDOS hard disk (`UFONT`, no server)**: the fixed ranges below, 89,743 characters in all, baked by `build_hdd.py` from `Galmuri14.ttf` and then `NotoSerifCJK16.ttf` (`--font`). A code point that neither font has is left blank.
+- **PC server (`unicode_server.py`)**: any character the PC's fonts have, through its fallback chain (the bundled fonts, then the Windows CJK fonts it finds, `NotoSerifCJK16.ttf`, Segoe UI Symbol for emoji and symbols, Tahoma for Arabic, Hebrew and Thai). It also composes old Hangul a syllable to a cell and puts Arabic and Hebrew in display order (see 5 and 5b).
+- **DOS 3.3 floppy (`$6000` cache)**: only the characters the disk's programs use, up to 255 entries (one per font a character is used in); anything else goes to the server.
+
+`UFONT` in `unicode.hdv` (32M), counted from the image:
+
+| Range | Block | Code points | Glyphs |
+| :--- | :--- | ---: | ---: |
+| U+0020–U+007E | ASCII (half width, 7×16) | 95 | 94 + space |
+| U+00A0–U+024F | Latin-1, Latin Extended-A/B | 432 | 431 |
+| U+0370–U+03FF | Greek | 144 | 135 |
+| U+0400–U+04FF | Cyrillic | 256 | 256 |
+| U+2000–U+206F | General punctuation | 112 | 94 |
+| U+2100–U+218F | Letterlike symbols, number forms | 144 | 140 |
+| U+2190–U+22FF | Arrows, mathematical operators | 368 | 368 |
+| U+2460–U+24FF | Enclosed alphanumerics | 160 | 160 |
+| U+2500–U+26FF | Box drawing, shapes, miscellaneous symbols | 512 | 512 |
+| U+3000–U+30FF | CJK symbols and punctuation, hiragana, katakana | 256 | 250 |
+| U+3200–U+32FF | Enclosed CJK letters and months (㈜ ㉠) | 256 | 255 |
+| U+FF00–U+FFEF | Halfwidth and fullwidth forms | 240 | 224 |
+| U+AC00–U+D7A3 | **Hangul syllables** (all) | 11,172 | 11,172 |
+| U+3130–U+318F | Hangul compatibility jamo | 96 | 93 |
+| U+1100–U+11FF | Hangul jamo (old Hangul: one jamo to a cell without the server) | 256 | 254 |
+| U+A960–U+A97F | Hangul jamo extended-A | 32 | 29 |
+| U+D7B0–U+D7FF | Hangul jamo extended-B | 80 | 72 |
+| U+4E00–U+9FFF | **CJK Unified Ideographs** (all) | 20,992 | 20,992 |
+| U+3400–U+4DBF | **CJK Extension A** (all) | 6,592 | 6,592 |
+| U+F900–U+FAFF | CJK Compatibility Ideographs | 512 | 366 |
+| U+20000–U+2A6DF | **CJK Extension B** | 42,720 | 42,711 |
+| U+2A700–U+2B73F | CJK Extension C | 4,160 | 4,149 |
+| U+2B740–U+2B81F | CJK Extension D | 224 | 222 |
+| U+2B820–U+2CEAF | CJK Extension E | 5,776 | 109 |
+| U+2CEB0–U+2EBEF | CJK Extension F | 7,488 | 5 |
+| U+2EBF0–U+2EE5F | CJK Extension I | 624 | 0 |
+| U+2F800–U+2FA1F | CJK Compatibility Ideographs Supplement | 544 | 55 |
+| U+30000–U+3134F | CJK Extension G | 4,944 | 3 |
+| U+31350–U+323AF | CJK Extension H | 4,192 | 0 |
+| | **Total** | | **89,743** |
+
+- **Hanja outside the BMP** (Extension B and later) are written as 4-byte UTF-8 in `\K…\N` and drawn from `UFONT` like the rest (`10 & "\KF0A08080\N"` → 𠀀). Extensions E to I are nearly empty because the fonts on the building PC do not have them; the server draws them only if a PC font does.
+- **`Ctrl+J`** offers the 8,646 Hanja in `UFONT` that have a Korean reading, 57 of them outside the BMP.
+- **Not in `UFONT`**: emoji, Arabic, Hebrew, Thai, Devanagari and other scripts outside the table. The server draws them.
+- **Cell size**: a full-width character is 14×16 pixels (20 columns by 12 rows), so Hanja with many strokes, common in the later extensions, lose detail.
+- **`800K`** (`--size 800K`, 1,600 blocks): the same table without the Hanja rows (Extension A, Unified Ideographs, the compatibility ideographs and everything outside the BMP), 14,539 characters.
+
 ---
 
 ## 💾 Standalone Font Subsetter & Offline DSK Baking
@@ -443,13 +492,13 @@ python build_hdd.py --prodos ProDOS_2_4_3.po --size 800K --out build/unicode_800
 | :--- | :--- |
 | `STARTUP` | Loads the driver and says whether the font was found |
 | `UNICODE` | The driver (`UNICODE.BIN`, `$4000`) |
-| `UFONT` | The 14×16 glyph of each code point at offset code point × 32. A sparse 2 MB file: only blocks with glyphs take disk space |
+| `UFONT` | The 14×16 glyph of each code point at offset code point × 32, up to U+323AF. A sparse 6.3 MB file (6,583,808 bytes): only blocks with glyphs take disk space |
 | `HDDEMO`, `JEMANG` | Demo programs |
 
 | `--size` | Glyphs | Disk used |
 | :--- | :--- | :--- |
-| `32M` (65,535 blocks, default) | 89,743: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility and conjoining jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs, the 6,592 of Extension A, 42,711 of Extension B and 4,543 more from Extensions C to I and the compatibility supplement (all the PC fonts have; outside the BMP as 4-byte UTF-8) | 2.9 MB |
-| `800K` (1,600 blocks) | 13,238: the same without Hanja (spread over 20,992 code points they need about 1,300 blocks) | 477 KB |
+| `32M` (65,535 blocks, default) | 89,743: ASCII, Latin, Greek, Cyrillic, symbols, kana, Hangul compatibility and conjoining jamo, all 11,172 Hangul syllables, 20,992 CJK Unified Ideographs, the 6,592 of Extension A, 42,711 of Extension B and 4,543 more from Extensions C to I and the compatibility supplement (all the PC fonts have; outside the BMP as 4-byte UTF-8). Range by range: [Characters drawn](#characters-drawn-unicode-ranges) | 2.9 MB |
+| `800K` (1,600 blocks) | 14,539: the same without Hanja (spread over 20,992 code points they need about 1,300 blocks) | 506 KB |
 
 `--font` picks the font chain (default `Galmuri14.ttf, NotoSerifCJK16.ttf`).
 
@@ -494,7 +543,7 @@ Without the server, old Hangul is drawn one jamo to a cell (composing a syllable
 
 After booting `unicode.hdv`, both drawing and 2-Bul-Sik typing work **with no PC and no serial card**:
 
-1. **Drawing**: `UFONT` holds about 35,000 glyphs, so `RUN HDDEMO`, `RUN JEMANG` and any program's `&` strings draw on the Apple II alone.
+1. **Drawing**: `UFONT` holds 89,743 glyphs ([Characters drawn](#characters-drawn-unicode-ranges)), so `RUN HDDEMO`, `RUN JEMANG` and any program's `&` strings draw on the Apple II alone.
 2. **Typing with `Ctrl+K` (onboard, the default)**:
    - At the `]` prompt, type `10 & "` and press **`Ctrl+K`**. The input line opens at the bottom with `[한]`.
    - Type in 2-Bul-Sik (`gksrmf` → 한글). What is being composed shows inverse; Backspace takes back one jamo; `Ctrl+K` switches 한 ↔ A.
